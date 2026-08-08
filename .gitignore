@@ -12,8 +12,14 @@ __pycache__/
 *.pyo
 *.pyd
 
-# Testing & Coverage
+# Testing, Sample Inputs & Dev Scripts
 tests/
+requirements.txt
+package.json
+run-tests.bat
+run-tests.ps1
+run-scan.bat
+run-scan.ps1
 .pytest_cache/
 .coverage
 htmlcov/
