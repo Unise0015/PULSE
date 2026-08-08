@@ -1,4 +1,5 @@
 import sqlite3
+from typing import Optional
 from pathlib import Path
 from pulse.config import get_config_dir
 
