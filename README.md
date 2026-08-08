@@ -113,15 +113,6 @@ By default, exported reports are saved to:
 
 ---
 
-## Testing
-
-Run full automated test suite:
-```bash
-pytest -v
-```
-
----
-
 ## License
 
-GNU General Public License v3.0 (GPLv3). See [LICENSE](file:///E:/PULSE/LICENSE) for details.
+GNU General Public License v3.0 (GPLv3). See [LICENSE](LICENSE) for details.

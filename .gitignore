@@ -13,6 +13,7 @@ __pycache__/
 *.pyd
 
 # Testing & Coverage
+tests/
 .pytest_cache/
 .coverage
 htmlcov/
