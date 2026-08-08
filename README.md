@@ -36,30 +36,46 @@ cd pulse
 
 *(Alternatively, download the ZIP archive from GitHub and extract it to a directory on your machine.)*
 
-### 2. Set Up a Virtual Environment (Recommended)
-Creating an isolated virtual environment ensures clean dependency management:
+### 2. Global Installation (Run `pulse` from Any Directory without Venv Activation)
+
+To run `pulse` from any directory without needing to manually activate a virtual environment:
+
+**On Linux / macOS (via `pipx` - Recommended):**
+```bash
+sudo apt update && sudo apt install -y pipx
+pipx ensurepath
+pipx install -e .
+```
+*(Or create a symlink: `ln -sf ~/Tools/pulse/venv/bin/pulse ~/.local/bin/pulse`)*
 
 **On Windows (PowerShell / Command Prompt):**
 ```bash
+pip install -e .
+```
+*(Installs `pulse.exe` directly into your system PATH Python Scripts directory).*
+
+---
+
+### 3. Virtual Environment Installation (Alternative)
+
+If you prefer installing inside an isolated virtual environment:
+
+**On Windows:**
+```bash
 python -m venv venv
 .\venv\Scripts\activate
+pip install -e .
 ```
 
 **On Linux / macOS:**
 ```bash
 python3 -m venv venv
 source venv/bin/activate
-```
-
-### 3. Install PULSE CLI
-Install the application in editable/production mode using `pip`:
-
-```bash
 pip install -e .
 ```
 
 ### 4. Run the Tool
-Launch PULSE from anywhere in your terminal:
+Launch PULSE from any directory in your terminal:
 
 ```bash
 pulse
