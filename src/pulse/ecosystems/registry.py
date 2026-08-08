@@ -4,7 +4,7 @@ import importlib
 import inspect
 import re
 from pathlib import Path
-from typing import List, Dict, Set, Type
+from typing import List, Dict, Set, Type, Any, Optional
 import logging
 from pulse.ecosystems.base import EcosystemPlugin, PluginCategory, ScanContext, ScannerConfig, Capability, PluginHealth, PluginManifest
 from pulse.domain.models import PackageInfo

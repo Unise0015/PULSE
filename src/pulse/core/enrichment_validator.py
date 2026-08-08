@@ -1,7 +1,7 @@
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Tuple
 
 from pulse.domain.models import ScanResult, VulnerabilityFinding
 from pulse.core.data_validator import VulnerabilityDataValidator, FindingRejectReason

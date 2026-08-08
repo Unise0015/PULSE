@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Optional
 from jinja2 import Environment, FileSystemLoader
 from pulse.reporting.models import ReportModel
 from pulse.reporting.renderers.base import BaseRenderer
