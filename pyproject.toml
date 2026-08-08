@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pulse"
+version = "4.0.0"
+description = "Multi-ecosystem. Exploit-aware. Interactive. All local. PULSE Security Scanner CLI."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "GPL-3.0-or-later" }
+authors = [
+    { name = "PULSE Security Team" }
+]
+dependencies = [
+    "rich>=13.0.0",
+    "questionary>=2.0.0",
+    "httpx>=0.24.0",
+    "reportlab>=4.0.0",
+    "jinja2>=3.1.0",
+    "packaging>=23.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+]
+
+[project.scripts]
+pulse = "pulse.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]

@@ -1,0 +1,24 @@
+<!-- ── Remediation Plan Section ── -->
+{% for section in report.sections %}
+{% if section.__class__.__name__ == 'RemediationSection' and section.items %}
+<div class="section-container">
+  <h2>Remediation & Action Plan</h2>
+  <p class="dim" style="margin-bottom: 15px;">Prioritised upgrade commands to remediate identified security vulnerabilities.</p>
+  
+  <div class="remediation-list">
+    {% for item in section.items %}
+    <div class="rem-card prio-{{ item.priority }}">
+      <div class="rem-header">
+        <span class="prio-tag">Priority P{{ item.priority }}</span>
+        <strong>{{ item.title }}</strong>
+      </div>
+      <div class="cmd-row">
+        <code>{{ item.command }}</code>
+        <button class="btn-copy" onclick="copyToClipboard('{{ item.command }}')">Copy Command</button>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+{% endfor %}

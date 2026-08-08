@@ -1,0 +1,1 @@
+# Npm ecosystem plugin package

@@ -1,0 +1,1 @@
+# Rust ecosystem plugin package

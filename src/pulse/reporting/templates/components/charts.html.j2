@@ -1,0 +1,88 @@
+<!-- ── Security Posture Charts Panel ── -->
+<div class="section-container charts-section">
+  <div class="section-header">
+    <h2>Security Analytics & Risk Breakdown</h2>
+  </div>
+
+  <div class="charts-grid">
+    <!-- Chart 1: Severity Breakdown Donut Chart -->
+    <div class="chart-card">
+      <h3 class="chart-title">Vulnerability Severity Breakdown</h3>
+      <div class="donut-chart-container">
+        <svg viewBox="0 0 100 100" class="donut-svg" id="severityDonutSvg">
+          <circle cx="50" cy="50" r="38" fill="none" stroke="#21262d" stroke-width="14" />
+          <!-- SVG segments injected via JS for accurate arc rendering -->
+        </svg>
+        <div class="donut-center-text">
+          <span class="donut-total" id="donutTotalVal">{{ report.findings | length }}</span>
+          <span class="donut-label">VULNS</span>
+        </div>
+      </div>
+      <div class="chart-legend">
+        <div class="legend-item"><span class="legend-dot bg-critical"></span> Critical: <strong>{{ report.risk_summary.critical_count }}</strong></div>
+        <div class="legend-item"><span class="legend-dot bg-high"></span> High: <strong>{{ report.risk_summary.high_count }}</strong></div>
+        <div class="legend-item"><span class="legend-dot bg-medium"></span> Medium: <strong>{{ report.risk_summary.medium_count }}</strong></div>
+        <div class="legend-item"><span class="legend-dot bg-low"></span> Low: <strong>{{ report.risk_summary.low_count + report.risk_summary.informational_count }}</strong></div>
+      </div>
+    </div>
+
+    <!-- Chart 2: Top Vulnerable Packages Bar Chart -->
+    <div class="chart-card">
+      <h3 class="chart-title">Top Packages by Risk Score</h3>
+      <div class="bar-chart-container">
+        {% set sorted_findings = report.findings | sort(attribute='risk_heat_score', reverse=True) %}
+        {% if sorted_findings %}
+          {% for f in sorted_findings[:5] %}
+          <div class="bar-row">
+            <div class="bar-label-group">
+              <span class="bar-pkg-name">{{ f.package_name }}</span>
+              <span class="bar-score font-mono">{{ f.risk_heat_score }}/100</span>
+            </div>
+            <div class="bar-track">
+              {% if f.severity.value == 'CRITICAL' %}
+                {% set bar_cls = 'bar-critical' %}
+              {% elif f.severity.value == 'HIGH' %}
+                {% set bar_cls = 'bar-high' %}
+              {% elif f.severity.value == 'MEDIUM' %}
+                {% set bar_cls = 'bar-medium' %}
+              {% else %}
+                {% set bar_cls = 'bar-low' %}
+              {% endif %}
+              <div class="bar-fill {{ bar_cls }}" style="width: {{ f.risk_heat_score }}%;"></div>
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="dim" style="text-align: center; padding: 20px;">No vulnerable packages detected.</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Chart 3: Supply Chain Exposure Breakdown -->
+    <div class="chart-card">
+      <h3 class="chart-title">Supply Chain Dependency Exposure</h3>
+      <div class="supply-chart-container">
+        {% set total_pkg = report.executive_summary.packages_scanned %}
+        {% set direct_cnt = report.risk_summary.direct_packages_count %}
+        {% set trans_cnt = report.risk_summary.transitive_packages_count %}
+        {% if total_pkg > 0 %}
+          {% set direct_pct = ((direct_cnt / total_pkg) * 100) | round(1) %}
+          {% set trans_pct = ((trans_cnt / total_pkg) * 100) | round(1) %}
+        {% else %}
+          {% set direct_pct = 100.0 %}
+          {% set trans_pct = 0.0 %}
+        {% endif %}
+        
+        <div class="supply-stat-num font-mono">{{ total_pkg }} <span class="dim" style="font-size: 0.9rem;">Total Packages</span></div>
+        <div class="stacked-bar">
+          <div class="stacked-segment seg-direct" style="width: {{ direct_pct }}%;" title="Direct Packages: {{ direct_cnt }}"></div>
+          <div class="stacked-segment seg-transitive" style="width: {{ trans_pct }}%;" title="Transitive Packages: {{ trans_cnt }}"></div>
+        </div>
+        <div class="supply-legend">
+          <div class="legend-item"><span class="legend-dot bg-direct"></span> Direct Dependencies: <strong>{{ direct_cnt }}</strong> ({{ direct_pct }}%)</div>
+          <div class="legend-item"><span class="legend-dot bg-transitive"></span> Transitive Dependencies: <strong>{{ trans_cnt }}</strong> ({{ trans_pct }}%)</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

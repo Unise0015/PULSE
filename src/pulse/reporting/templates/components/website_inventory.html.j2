@@ -1,0 +1,42 @@
+<!-- ── Website Technology Section ── -->
+{% for section in report.sections %}
+{% if section.__class__.__name__ == 'WebsiteAssessmentSection' %}
+<div class="section-container">
+  <h2>Website Technology Assessment</h2>
+  <div class="meta-line">URL: <strong>{{ section.url }}</strong> | Status: <strong>{{ section.correlation_status }}</strong></div>
+  
+  <div class="table-wrapper" style="margin-top:15px;">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Technology</th>
+          <th>Version</th>
+          <th>Category</th>
+          <th>Confidence</th>
+          <th>Correlation Supported</th>
+          <th>Vulnerabilities Found</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in section.technologies %}
+        <tr>
+          <td><strong>{{ t.name }}</strong></td>
+          <td>{{ t.version or 'Unknown' }}</td>
+          <td><span class="tech-tag">{{ t.category }}</span></td>
+          <td>{{ t.confidence }}%</td>
+          <td>{{ 'Yes' if t.correlated else 'No' }}</td>
+          <td>
+            {% if t.vulnerability_count > 0 %}
+              <span class="text-red bold">{{ t.vulnerability_count }}</span>
+            {% else %}
+              <span class="text-green">0</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endfor %}

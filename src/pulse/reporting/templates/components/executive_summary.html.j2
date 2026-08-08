@@ -1,0 +1,23 @@
+<!-- ── Executive Summary Card Grid ── -->
+<div class="card-grid">
+  <div class="stat-card">
+    <div class="stat-title">Target Analysed</div>
+    <div class="stat-value" style="font-size: 1.1rem; word-break: break-all;">{{ report.executive_summary.target_id }}</div>
+    <div class="stat-sub">{{ report.executive_summary.target_type | upper }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-title">Scan Timestamp</div>
+    <div class="stat-value" style="font-size: 1.0rem;">{{ report.executive_summary.scan_started | datetime_fmt }}</div>
+    <div class="stat-sub">Duration: {{ report.executive_summary.duration | duration_fmt }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-title">Packages Scanned</div>
+    <div class="stat-value">{{ report.executive_summary.packages_scanned }}</div>
+    <div class="stat-sub">{{ report.risk_summary.direct_packages_count }} Direct / {{ report.risk_summary.transitive_packages_count }} Transitive</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-title">Vulnerable Packages</div>
+    <div class="stat-value text-red">{{ report.executive_summary.vulnerable_count }}</div>
+    <div class="stat-sub">{{ report.executive_summary.packages_scanned - report.executive_summary.vulnerable_count }} Clean Packages</div>
+  </div>
+</div>

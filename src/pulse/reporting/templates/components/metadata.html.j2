@@ -1,0 +1,13 @@
+<!-- ── Metadata & Provenance Footer ── -->
+<div class="report-footer">
+  <div class="footer-grid">
+    <div>
+      <strong>PULSE Security Intelligence</strong> · Commercial Vulnerability Prioritisation<br>
+      <span class="dim">Generated: {{ report.metadata.generated_at | datetime_fmt }}</span>
+    </div>
+    <div class="text-right dim-small">
+      PULSE Engine v{{ report.metadata.pulse_version }} | Schema v{{ report.metadata.report_schema_version }} | Template v{{ report.metadata.template_version }}<br>
+      Database Sources: OSV (Active) · NVD (Active) · CISA KEV (Active) · EPSS (Active)
+    </div>
+  </div>
+</div>

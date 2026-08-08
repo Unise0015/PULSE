@@ -1,0 +1,19 @@
+<!-- ── Overall Security Posture Header ── -->
+<div class="posture-banner">
+  <div class="posture-left">
+    <div class="posture-rating">{{ report.executive_summary.attack_surface_score | posture_rating }}</div>
+    <div class="posture-stars">{{ report.executive_summary.attack_surface_score | posture_stars }}</div>
+    <div class="target-sub">Target: <strong>{{ report.executive_summary.target_id }}</strong> ({{ report.executive_summary.target_type }})</div>
+  </div>
+  <div class="posture-right">
+    <div class="score-number">{{ report.executive_summary.attack_surface_score }}</div>
+    <div class="score-label">Attack Surface Score</div>
+    {% if report.risk_summary.score_delta is not none and report.risk_summary.score_delta != 0 %}
+      {% if report.risk_summary.score_delta > 0 %}
+        <div class="delta-badge delta-degraded">▲ +{{ report.risk_summary.score_delta }} since previous scan</div>
+      {% else %}
+        <div class="delta-badge delta-improved">▼ {{ report.risk_summary.score_delta }} since previous scan</div>
+      {% endif %}
+    {% endif %}
+  </div>
+</div>

@@ -1,0 +1,42 @@
+<!-- ── Dependency Inventory Section ── -->
+{% for section in report.sections %}
+{% if section.__class__.__name__ == 'DependencyInventorySection' %}
+<div class="section-container">
+  <div class="section-header">
+    <h2>Dependency Inventory ({{ section.total_packages }} Total Packages)</h2>
+    <input type="text" id="pkgSearch" placeholder="Search inventory packages..." onkeyup="filterPackages()" class="search-input">
+  </div>
+  
+  <div class="table-wrapper">
+    <table class="data-table" id="pkgTable">
+      <thead>
+        <tr>
+          <th>Package Name</th>
+          <th>Installed Version</th>
+          <th>Ecosystem</th>
+          <th>Dependency Type</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for pkg in section.items %}
+        <tr class="pkg-row" data-pkgname="{{ pkg.name }}">
+          <td><strong>{{ pkg.name }}</strong></td>
+          <td class="font-mono">{{ pkg.version }}</td>
+          <td>{{ pkg.ecosystem }}</td>
+          <td>{{ 'Direct' if pkg.direct else 'Transitive' }}</td>
+          <td>
+            {% if pkg.vulnerable %}
+              <span class="badge badge-critical">VULNERABLE</span>
+            {% else %}
+              <span class="badge badge-clean">CLEAN</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endfor %}

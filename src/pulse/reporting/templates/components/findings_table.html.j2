@@ -1,0 +1,96 @@
+<!-- ── Vulnerabilities Section ── -->
+<div class="section-container">
+  <div class="section-header">
+    <h2>Vulnerabilities ({{ report.findings | length }})</h2>
+    <div class="filter-controls">
+      <input type="text" id="vulnSearch" placeholder="Search CVE, package, description..." onkeyup="applyFilters()" class="search-input">
+      <div class="checkbox-group">
+        <label><input type="checkbox" id="chkCritical" checked onchange="applyFilters()"> <span class="badge badge-critical">Critical</span></label>
+        <label><input type="checkbox" id="chkHigh" checked onchange="applyFilters()"> <span class="badge badge-high">High</span></label>
+        <label><input type="checkbox" id="chkMedium" checked onchange="applyFilters()"> <span class="badge badge-medium">Medium</span></label>
+        <label><input type="checkbox" id="chkLow" checked onchange="applyFilters()"> <span class="badge badge-low">Low</span></label>
+        <label><input type="checkbox" id="chkKEV" onchange="applyFilters()"> <span class="badge badge-kev">KEV Only</span></label>
+      </div>
+    </div>
+  </div>
+
+  {% if report.findings %}
+  <div class="table-wrapper">
+    <table class="data-table" id="vulnTable">
+      <thead>
+        <tr>
+          <th>CVE ID</th>
+          <th>Package / Technology</th>
+          <th>Severity</th>
+          <th>CVSS</th>
+          <th>EPSS</th>
+          <th>KEV</th>
+          <th>Risk Score</th>
+          <th>Remediation</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in report.findings %}
+        <tr class="vuln-row sev-{{ f.severity.value }}" data-cve="{{ f.cve_id }}" data-pkg="{{ f.package_name }}" data-kev="{{ 'true' if f.kev_match else 'false' }}" data-sev="{{ f.severity.value }}">
+          <td class="font-mono bold">
+            {% if f.nvd_url %}
+              <a href="{{ f.nvd_url }}" target="_blank" rel="noopener">{{ f.cve_id }}</a>
+            {% else %}
+              {{ f.cve_id }}
+            {% endif %}
+          </td>
+          <td>
+            <strong>{{ f.package_name }}</strong> <span class="dim">v{{ f.package_version }}</span>
+            <div class="dim-small">{{ f.ecosystem }}</div>
+          </td>
+          <td><span class="badge badge-{{ f.severity.value | lower }}">{{ f.severity.value }}</span></td>
+          <td class="font-mono">{{ f.cvss_score }}</td>
+          <td class="font-mono">{{ f.epss_percent }}</td>
+          <td>
+            {% if f.kev_match %}
+              <span class="badge badge-kev">EXPLOITED</span>
+            {% else %}
+              <span class="dim">-</span>
+            {% endif %}
+          </td>
+          <td class="font-mono bold">{{ f.risk_heat_score }}/100</td>
+          <td>
+            {% if f.fix_version %}
+              <code class="code-fix">{{ f.fix_version }}</code>
+            {% else %}
+              <span class="dim">No fix available</span>
+            {% endif %}
+          </td>
+          <td>
+            <button class="btn-toggle" onclick="toggleDetails('detail-{{ loop.index }}')">Details ▼</button>
+          </td>
+        </tr>
+        <tr id="detail-{{ loop.index }}" class="detail-row" style="display:none;">
+          <td colspan="9">
+            <div class="detail-content">
+              <p><strong>Description:</strong> {{ f.description }}</p>
+              {% if f.attack_techniques %}
+                <p><strong>MITRE ATT&CK Techniques:</strong>
+                  {% for tech in f.attack_techniques %}
+                    <span class="tech-tag">{{ tech }}</span>
+                  {% endfor %}
+                </p>
+              {% endif %}
+              {% if f.remediation_command %}
+                <div class="cmd-box">
+                  <span>Recommended Action:</span>
+                  <code>{{ f.remediation_command }}</code>
+                </div>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <div class="empty-banner">✓ No vulnerabilities identified in this scan.</div>
+  {% endif %}
+</div>

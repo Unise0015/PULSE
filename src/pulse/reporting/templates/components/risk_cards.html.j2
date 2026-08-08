@@ -1,0 +1,28 @@
+<!-- ── Interactive Severity Cards ── -->
+<div class="card-grid clickable-cards">
+  <div class="stat-card card-critical" onclick="filterSeverity('CRITICAL')">
+    <div class="stat-title">Critical</div>
+    <div class="stat-value text-critical">{{ report.risk_summary.critical_count }}</div>
+    <div class="stat-sub">Immediate Action Required</div>
+  </div>
+  <div class="stat-card card-high" onclick="filterSeverity('HIGH')">
+    <div class="stat-title">High</div>
+    <div class="stat-value text-high">{{ report.risk_summary.high_count }}</div>
+    <div class="stat-sub">Prioritised Fixes</div>
+  </div>
+  <div class="stat-card card-medium" onclick="filterSeverity('MEDIUM')">
+    <div class="stat-title">Medium</div>
+    <div class="stat-value text-medium">{{ report.risk_summary.medium_count }}</div>
+    <div class="stat-sub">Moderate Vulnerabilities</div>
+  </div>
+  <div class="stat-card card-low" onclick="filterSeverity('LOW')">
+    <div class="stat-title">Low / Info</div>
+    <div class="stat-value text-low">{{ report.risk_summary.low_count + report.risk_summary.informational_count }}</div>
+    <div class="stat-sub">Advisories & Notes</div>
+  </div>
+  <div class="stat-card card-kev" onclick="filterKEV()">
+    <div class="stat-title">CISA KEV Matches</div>
+    <div class="stat-value text-kev">{{ report.risk_summary.kev_matches_count }}</div>
+    <div class="stat-sub">Actively Exploited</div>
+  </div>
+</div>

@@ -1,0 +1,1 @@
+# Composer ecosystem plugin package

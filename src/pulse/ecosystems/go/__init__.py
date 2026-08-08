@@ -1,0 +1,1 @@
+# Go ecosystem plugin package

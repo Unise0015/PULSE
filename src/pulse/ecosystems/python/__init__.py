@@ -1,0 +1,1 @@
+# Python ecosystem plugin package

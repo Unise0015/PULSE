@@ -1,0 +1,35 @@
+NORMALIZATION_MAP = {
+    "nextjs": "Next.js",
+    "next.js": "Next.js",
+    "react": "React",
+    "reactjs": "React",
+    "vue": "Vue.js",
+    "vuejs": "Vue.js",
+    "vue.js": "Vue.js",
+    "angular": "Angular",
+    "angularjs": "Angular",
+    "svelte": "Svelte",
+    "vite": "Vite",
+    "wordpress": "WordPress",
+    "drupal": "Drupal",
+    "joomla": "Joomla",
+    "php": "PHP",
+    "nodejs": "Node.js",
+    "node.js": "Node.js",
+    "python": "Python",
+    "asp.net": "ASP.NET",
+    "nginx": "Nginx",
+    "apache": "Apache",
+    "iis": "IIS",
+    "microsoft-iis": "IIS",
+    "cloudflare": "Cloudflare",
+    "fastly": "Fastly",
+    "akamai": "Akamai",
+    "cloudfront": "CloudFront",
+    "vercel": "Vercel",
+    "netlify": "Netlify",
+}
+
+def normalize_name(name: str) -> str:
+    cleaned = name.strip().lower()
+    return NORMALIZATION_MAP.get(cleaned, name.strip())

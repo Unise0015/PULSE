@@ -1,0 +1,1 @@
+# Maven ecosystem plugin package

@@ -1,0 +1,1 @@
+# NuGet ecosystem plugin package
