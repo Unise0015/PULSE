@@ -1,6 +1,7 @@
 import sqlite3
 from pathlib import Path
-from typing import Optional, List
+from datetime import datetime
+from typing import Optional, List, Dict, Any, Tuple
 from pulse.domain.models import ScanResult, VulnerabilityFinding, PostureDelta
 from pulse.history.db import get_db_path
 
