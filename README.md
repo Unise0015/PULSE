@@ -1,4 +1,4 @@
-# PULSE CLI
+# PULSE — Package & Unified Lifecycle Security Engine
 
 A fast, developer-first, threat-aware vulnerability scanner and security intelligence CLI for software dependencies and web applications.
 
