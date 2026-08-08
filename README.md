@@ -9,6 +9,7 @@ PULSE goes beyond theoretical CVSS scores by fusing multi-source threat intellig
 ## Key Features
 
 - ⚡ **Multi-Ecosystem Discovery:** Parses and inspects dependencies across **Python**, **Node.js**, **Rust (Cargo)**, **Go**, **Ruby (Gems)**, **PHP (Composer)**, and **Java (Maven)**.
+- 🌐 **Website Technology & Vulnerability Assessment:** Passive fingerprinting of web frameworks, JS libraries, server software, and CMS platforms (React, Vue, Angular, Next.js, Nginx, Apache, WordPress) with HTTP security header analysis and vulnerability correlation.
 - 🎯 **Threat-Aware Prioritization:** Sorts findings by the **Risk Heat Score** combining CVSS, EPSS 30-day exploit prediction probability, and CISA Known Exploited Vulnerability (KEV) active exploitation data.
 - 🛡️ **Verified Upgrade Recommendations:** Recommends exact version pins (e.g. `pip install Django==6.1` or `npm install react@18.3.1`) verified against advisory history to ensure recommended versions are never vulnerable.
 - 🗺️ **Human-Readable ATT&CK & CWE:** Displays official MITRE ATT&CK techniques (`T1190 — Exploit Public-Facing Application`) and CWE catalog names (`CWE-89 — SQL Injection`).
