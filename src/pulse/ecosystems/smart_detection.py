@@ -301,25 +301,44 @@ class SmartEcosystemDetector:
                 # If cached, we still want to verify the version if one is provided
                 pass
 
-        # Perform concurrent registry lookups
-        ecosystems = ["Python", "Node.js", "Rust", "Ruby", "Composer", "NuGet", "Maven", "Go"]
-        
+        # Perform concurrent registry lookups across all loaded providers
+        providers = self.registry.get_all_providers()
+        if not providers:
+            from pulse.ecosystems.registry import PluginRegistry
+            providers = PluginRegistry.load()
+
+        async def check_provider(client: httpx.AsyncClient, p: EcosystemPlugin) -> Tuple[EcosystemPlugin, RegistryValidationResult]:
+            res = await p.validate_registry_async(client, package_name, version)
+            if res is not None:
+                return p, res
+            
+            eco_name = p.manifest.name.lower()
+            if eco_name == "python":
+                return p, await self._check_pypi(client, package_name, version)
+            elif eco_name in ("node.js", "node", "npm"):
+                return p, await self._check_npm(client, package_name, version)
+            elif eco_name in ("rust", "cargo"):
+                return p, await self._check_crates(client, package_name, version)
+            elif eco_name in ("ruby", "rubygems"):
+                return p, await self._check_rubygems(client, package_name, version)
+            elif eco_name in ("composer", "php"):
+                return p, await self._check_packagist(client, package_name, version)
+            elif eco_name in ("nuget", ".net"):
+                return p, await self._check_nuget(client, package_name, version)
+            elif eco_name in ("maven", "java"):
+                return p, await self._check_maven(client, package_name, version)
+            elif eco_name in ("go", "golang"):
+                return p, await self._check_go(client, package_name, version)
+
+            return p, RegistryValidationResult(False, False, None, False, 404)
+
         async def run_lookups():
             async with httpx.AsyncClient(timeout=3.0, follow_redirects=True) as client:
-                tasks = [
-                    self._check_pypi(client, package_name, version),
-                    self._check_npm(client, package_name, version),
-                    self._check_crates(client, package_name, version),
-                    self._check_rubygems(client, package_name, version),
-                    self._check_packagist(client, package_name, version),
-                    self._check_nuget(client, package_name, version),
-                    self._check_maven(client, package_name, version),
-                    self._check_go(client, package_name, version),
-                ]
+                tasks = [check_provider(client, p) for p in providers]
                 return await asyncio.gather(*tasks)
 
         try:
-            reg_results = asyncio.run(run_lookups())
+            lookup_pairs = asyncio.run(run_lookups())
         except Exception as e:
             logger.warning(f"Error running registry checks: {e}")
             return [ResolutionScore(ecosystem=c.ecosystem, score=c.confidence) for c in resolved], DetectionStatus.NETWORK_ERROR
@@ -329,7 +348,8 @@ class SmartEcosystemDetector:
         package_found_anywhere = False
         version_found_anywhere = False
 
-        for eco, reg_val in zip(ecosystems, reg_results):
+        for provider_obj, reg_val in lookup_pairs:
+            eco = provider_obj.manifest.name
             if not reg_val.network_error:
                 all_network_errors = False
             if reg_val.package_exists:
@@ -350,29 +370,12 @@ class SmartEcosystemDetector:
             if version and reg_val.version_exists:
                 score_val += 100
                 
-            lockfile_map = {
-                "Python": ["requirements.txt"],
-                "Node.js": ["package.json", "package-lock.json"],
-                "Rust": ["Cargo.toml", "Cargo.lock"],
-                "Go": ["go.mod", "go.sum"],
-                "Ruby": ["Gemfile", "Gemfile.lock"],
-                "Composer": ["composer.json", "composer.lock"],
-                "NuGet": ["packages.config"],
-                "Maven": ["pom.xml"]
-            }
-            lockfile_exists = False
-            for lf in lockfile_map.get(eco, []):
-                if (current_dir / lf).exists():
-                    lockfile_exists = True
-                    break
-            if lockfile_exists:
-                score_val += 15
-                
             scores.append(ResolutionScore(
                 ecosystem=eco,
                 validation=reg_val,
                 score=score_val
             ))
+
 
         # Stage 4: Network Error
         if all_network_errors:

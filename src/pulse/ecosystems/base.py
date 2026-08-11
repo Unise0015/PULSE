@@ -85,7 +85,21 @@ class PluginManifest:
     dependencies: List[str] = field(default_factory=list)
 
 @dataclass
+class ProviderMetadata:
+    ecosystem_id: str
+    display_name: str
+    registry_name: str
+    package_manager: str = ""
+    ecosystem_type: str = "application"  # application, system, infrastructure, container
+    supports_version_lookup: bool = True
+    supports_latest_version: bool = True
+    osv_ecosystem: Optional[str] = None
+    registry_url: Optional[str] = None
+
+
+@dataclass
 class RawDependency:
+
     name: str
     version_spec: str
     ecosystem: str
@@ -350,7 +364,33 @@ class EcosystemPlugin(ABC):
         """Human-readable registry name (e.g. 'PyPI', 'npm', 'crates.io')."""
         # Import here to avoid circular; the map is defined below EcosystemPlugin
         from pulse.ecosystems.base import ECOSYSTEM_REGISTRY_MAP
-        return ECOSYSTEM_REGISTRY_MAP.get(self.manifest.name, self.manifest.ecosystem)
+        return ECOSYSTEM_REGISTRY_MAP.get(self.manifest.name, self.manifest.ecosystem or self.manifest.name)
+
+    @property
+    def provider_metadata(self) -> ProviderMetadata:
+        """Canonical metadata for ecosystem provider."""
+        return ProviderMetadata(
+            ecosystem_id=self.manifest.id,
+            display_name=self.display_name,
+            registry_name=self.registry_name,
+            osv_ecosystem=self.manifest.ecosystem
+        )
+
+    def normalize_package_name(self, name: str) -> str:
+        return name.strip()
+
+    def package_exists(self, package_name: str) -> bool:
+        return False
+
+    def version_exists(self, package_name: str, version: str) -> bool:
+        return False
+
+    def get_latest_version(self, package_name: str) -> Optional[str]:
+        return None
+
+    async def validate_registry_async(self, client: Any, name: str, version: Optional[str] = None) -> Any:
+        return None
+
 
     def discover_packages(self, path: Path) -> List[PackageInfo]:
         from pulse.ecosystems.base import ScanContext, ScannerConfig
@@ -369,7 +409,25 @@ ECOSYSTEM_REGISTRY_MAP = {
     "Composer": "Packagist",
     "NuGet": "NuGet",
     "Maven": "Maven Central",
+    "Swift": "Swift Package Index",
+    "Dart": "pub.dev",
+    "Hex": "Hex.pm",
+    "CRAN": "CRAN",
+    "Clojars": "Clojars",
+    "Hackage": "Hackage",
+    "CPAN": "CPAN",
+    "Conan": "ConanCenter",
+    "Terraform": "Terraform Registry",
+    "Helm": "Helm Charts",
+    "Alpine": "Alpine Packages",
+    "Debian": "Debian Security Tracker",
+    "Ubuntu": "Ubuntu Security Notices",
+    "RPM": "Fedora/RHEL Security",
+    "Arch": "Arch Package Database",
+    "Nix": "Nixpkgs",
+    "Container": "Docker/OCI Registries"
 }
+
 
 # --- Legacy Compatibility Wrapper ---
 class EcosystemProvider(EcosystemPlugin):
