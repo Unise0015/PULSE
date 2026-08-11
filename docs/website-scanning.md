@@ -9,7 +9,7 @@ PULSE features a production-ready, high-performance **Declarative Web Technology
 The web technology subsystem combines two complementary signature systems:
 
 1. **Declarative Engine (`src/pulse/website/declarative/`)**:
-   - Parses Wappalyzer-compatible JSON signatures (`pulse/data/web_signatures/`).
+   - Parses declarative JSON signatures (`pulse/data/web_signatures/`).
    - Uses zero-cost pre-filtered lookup indexes (`SignatureIndex`) for headers, cookies, meta tags, script URLs, and HTML body patterns.
    - Extracts semantic versions via capture groups (`version:\1`).
    - Resolves technology implication graphs recursively (`Next.js` -> `React` -> `Node.js`).

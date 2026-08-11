@@ -46,7 +46,7 @@ class SignatureLoader:
             logger.warning("Error loading categories.json: %s", e)
 
     def parse_pattern_rule(self, raw_pattern: str) -> PatternRule:
-        """Parses a pattern string with Wappalyzer-style inline modifiers like \\;version:\\1\\;confidence:50."""
+        """Parses a pattern string with inline modifiers like \\;version:\\1\\;confidence:50."""
         parts = raw_pattern.split(r"\;")
         pattern = parts[0]
         version_group = None

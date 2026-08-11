@@ -203,7 +203,7 @@ class WebsiteFingerprintAnalyzer:
                     children=[]
                 ))
 
-        # 2.5 Declarative Signature Engine Execution (Wappalyzer 3000+ JSON Signatures)
+        # 2.5 Declarative Signature Engine Execution (3000+ JSON Signatures)
         try:
             decl_engine = get_declarative_engine()
             decl_fingerprints = decl_engine.analyze(
