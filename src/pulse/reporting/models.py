@@ -68,6 +68,8 @@ class WebsiteTechnologyModel:
     confidence: int
     correlated: bool
     vulnerability_count: int
+    correlation_status: str = "Detection Only"
+    intelligence_sources: List[str] = field(default_factory=list)
 
 @dataclass
 class PackageInventoryItem:

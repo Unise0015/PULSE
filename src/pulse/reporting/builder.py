@@ -120,17 +120,33 @@ class ReportBuilder:
 
         # Section: Website Assessment (if applicable)
         if scan.website_assessment:
+            from pulse.website.capability import CorrelationEligibilityStatus, evaluate_correlation_eligibility
+            eligibilities = getattr(scan.website_assessment, 'technology_eligibilities', {})
+            
             tech_models = []
             for t in scan.website_assessment.technologies:
                 vuln_cnt = sum(1 for f in finding_models if f.package_name == t.name)
+                
+                # Use stored eligibility (Single Source of Truth)
+                tech_id = getattr(t, "signature_id", "") or t.name.lower()
+                elig = eligibilities.get(tech_id)
+                if not elig:
+                    elig = evaluate_correlation_eligibility(t)
+                is_correlated = elig.status in (
+                    CorrelationEligibilityStatus.CORRELATABLE,
+                    CorrelationEligibilityStatus.PARTIALLY_CORRELATABLE,
+                )
+                
                 tech_models.append(
                     WebsiteTechnologyModel(
                         name=t.name,
                         version=t.version,
                         category=t.category or "Technology",
                         confidence=t.confidence,
-                        correlated=t.correlation_supported,
-                        vulnerability_count=vuln_cnt
+                        correlated=is_correlated,
+                        vulnerability_count=vuln_cnt,
+                        correlation_status=elig.status.value,
+                        intelligence_sources=elig.intelligence_sources,
                     )
                 )
             sections.append(

@@ -1073,13 +1073,35 @@ def print_website_assessment_summary(console, scan: ScanResult):
                 text.append(" • None\n")
             text.append("\n")
             
-    # Coverage
-    correlatable = sum(1 for t in wa.technologies if t.correlation_supported)
-    unsupported = sum(1 for t in wa.technologies if not t.correlation_supported)
+    # Coverage — uses stored eligibility results (Single Source of Truth)
+    from pulse.website.capability import CorrelationEligibilityStatus, evaluate_correlation_eligibility
+    eligibilities = getattr(wa, 'technology_eligibilities', {})
+    if eligibilities:
+        elig_values = list(eligibilities.values())
+    else:
+        elig_values = [evaluate_correlation_eligibility(t) for t in wa.technologies]
+    
+    count_correlatable = sum(1 for e in elig_values if e.status == CorrelationEligibilityStatus.CORRELATABLE)
+    count_partial = sum(1 for e in elig_values if e.status == CorrelationEligibilityStatus.PARTIALLY_CORRELATABLE)
+    count_version_req = sum(1 for e in elig_values if e.status == CorrelationEligibilityStatus.VERSION_REQUIRED)
+    count_detection = sum(1 for e in elig_values if e.status == CorrelationEligibilityStatus.DETECTION_ONLY)
+    count_intel_na = sum(1 for e in elig_values if e.status in (
+        CorrelationEligibilityStatus.INTELLIGENCE_UNAVAILABLE,
+        CorrelationEligibilityStatus.RESOLUTION_FAILED,
+        CorrelationEligibilityStatus.CONFIDENCE_TOO_LOW,
+    ))
     
     text.append("Coverage\n")
-    text.append(f" • Correlatable: {correlatable}\n")
-    text.append(f" • Unsupported: {unsupported}\n\n")
+    text.append(f" • Correlatable: {count_correlatable}\n")
+    if count_partial > 0:
+        text.append(f" • Partial: {count_partial}\n")
+    if count_version_req > 0:
+        text.append(f" • Version Required: {count_version_req}\n")
+    if count_detection > 0:
+        text.append(f" • Detection Only: {count_detection}\n")
+    if count_intel_na > 0:
+        text.append(f" • Intelligence N/A: {count_intel_na}\n")
+    text.append("\n")
     
     status_val = wa.correlation_status.value if hasattr(wa.correlation_status, "value") else str(wa.correlation_status)
     text.append(f"Vulnerability Correlation:\n • {status_val}")
@@ -1128,18 +1150,21 @@ def print_technologies_view(console, scan: ScanResult):
         table.add_column("Risk", justify="center", style="bold red")
         table.add_column("Coverage", justify="center")
         
+    from pulse.website.capability import CorrelationEligibilityStatus, evaluate_correlation_eligibility
+    eligibilities = getattr(wa, 'technology_eligibilities', {})
+    
     for t in sorted(wa.technologies, key=lambda x: x.confidence, reverse=True):
         # Resolve display name
         tech_key = t.name.lower()
         catalog_entry = TECHNOLOGY_CATALOG.get(tech_key)
         display_name = catalog_entry.get("display_name", t.name) if catalog_entry else t.name
-        coverage = catalog_entry.get("coverage", "experimental") if catalog_entry else "experimental"
         
-        # Coverage string
-        if not t.correlation_supported:
-            coverage_str = "Unsupported"
-        else:
-            coverage_str = coverage.capitalize()
+        # Coverage string — from stored eligibility (Single Source of Truth)
+        tech_id = getattr(t, "signature_id", "") or tech_key
+        elig = eligibilities.get(tech_id)
+        if not elig:
+            elig = evaluate_correlation_eligibility(t)
+        coverage_str = elig.status.value
             
         version_str = t.version or "Unknown"
         

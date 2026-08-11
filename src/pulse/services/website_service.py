@@ -74,6 +74,10 @@ class WebsiteService:
         from pulse.website.remediation import get_upgrade_recommendation
         from pulse.enrichment.nvd.correlator import NVDCorrelationEngine
         from pulse.correlation.models import CorrelationResult, CPECandidate, ResolverMatchType
+        from pulse.website.capability import (
+            evaluate_correlation_eligibility, evaluate_all_eligibilities,
+            CorrelationEligibilityStatus
+        )
         
         eligible = []
         skipped = []
@@ -84,31 +88,58 @@ class WebsiteService:
         osv_packages = []
         nvd_correlation_results = []
         
+        # ====================================================================
+        # Evaluate eligibility for ALL technologies and store results
+        # This is the Single Source of Truth for the entire scan
+        # ====================================================================
+        eligibilities = evaluate_all_eligibilities(scan.website_assessment.technologies)
+        scan.website_assessment.technology_eligibilities = eligibilities
+        
         for tech in scan.website_assessment.technologies:
-            if not tech.correlation_supported:
-                skipped.append(f"{tech.name} (correlation not supported by signature)")
+            tech_id = getattr(tech, "signature_id", "") or tech.name.lower()
+            elig = eligibilities.get(tech_id)
+            if not elig:
+                skipped.append(f"{tech.name} (resolution failed)")
                 continue
-                
-            tech_key = resolve_technology(tech.name)
-            if not tech_key:
-                skipped.append(f"{tech.name} (unsupported technology)")
+            
+            # ---- Route based on eligibility status ----
+            if elig.status == CorrelationEligibilityStatus.DETECTION_ONLY:
+                skipped.append(f"{tech.name} (detection only)")
                 continue
-                
-            # Mutate tech.name to normalized key so downstream layers (like history) get normalized keys
+            elif elig.status == CorrelationEligibilityStatus.CONFIDENCE_TOO_LOW:
+                skipped.append(f"{tech.name} (confidence {tech.confidence} < 40)")
+                continue
+            elif elig.status == CorrelationEligibilityStatus.RESOLUTION_FAILED:
+                skipped.append(f"{tech.name} (identity resolution failed)")
+                continue
+            elif elig.status == CorrelationEligibilityStatus.INTELLIGENCE_UNAVAILABLE:
+                skipped.append(f"{tech.name} (vulnerability intelligence unavailable)")
+                continue
+            elif elig.status == CorrelationEligibilityStatus.VERSION_REQUIRED:
+                skipped.append(f"{tech.name} (version required for correlation)")
+                continue
+            
+            # CORRELATABLE or PARTIALLY_CORRELATABLE — proceed with correlation
+            tech_key = elig.catalog_key or tech.name.lower()
+            
+            # Normalize tech name to catalog key
             tech.name = tech_key
             
             normalized_version, version_status = resolve_version(tech_key, tech.version, tech.confidence)
-            do_lookup, show_warning = should_correlate(tech.confidence)
             
-            if not do_lookup:
-                skipped.append(f"{tech.name} (confidence {tech.confidence} < 40)")
-                continue
-                
-            strategy = determine_lookup_strategy(tech_key)
+            # Determine lookup strategy from eligibility
+            strategy_str = elig.lookup_strategy or "both"
+            if strategy_str == "osv":
+                strategy = LookupStrategyType.OSV_ONLY
+            elif strategy_str == "nvd":
+                strategy = LookupStrategyType.NVD_ONLY
+            else:
+                strategy = LookupStrategyType.OSV_AND_NVD
             
             # Record eligible
             version_disp = normalized_version if normalized_version else "Unknown"
-            eligible.append(f"{tech.name} {version_disp} (Strategy: {strategy.value.upper()})")
+            status_label = "\u2713" if elig.status == CorrelationEligibilityStatus.CORRELATABLE else "\u25d0"
+            eligible.append(f"{status_label} {tech.name} {version_disp} (Strategy: {strategy.value.upper()}, Sources: {', '.join(elig.intelligence_sources)})")
             
             # Map inputs for lookup
             from pulse.website.technology_catalog import TECHNOLOGY_CATALOG
@@ -116,47 +147,42 @@ class WebsiteService:
             display_name = catalog_entry.get("display_name", tech.name) if catalog_entry else tech.name
             
             # Create PackageInfo representing the technology
-            pkg_name = catalog_entry.get("package", tech_key) if catalog_entry else tech_key
-            eco = catalog_entry.get("ecosystem", "website") if catalog_entry else "website"
+            pkg_name = elig.package_name or tech_key
+            eco = elig.ecosystem or "website"
             
-            # If strategy is OSV_ONLY or OSV_AND_NVD, map to OSV package
+            # If strategy involves OSV, map to OSV package
             if strategy in (LookupStrategyType.OSV_ONLY, LookupStrategyType.OSV_AND_NVD):
-                osv_map = get_osv_package_for_tech(tech_key)
-                if osv_map and normalized_version:
-                    pkg_name_osv, ecosystem_osv = osv_map
-                    pkg = PackageInfo(name=pkg_name_osv, version=normalized_version, ecosystem=ecosystem_osv, dependency_type="DIRECT")
+                if elig.package_name and elig.ecosystem and normalized_version:
+                    pkg = PackageInfo(name=elig.package_name, version=normalized_version, ecosystem=elig.ecosystem, dependency_type="DIRECT")
                     osv_packages.append((tech_key, pkg))
                     tech_to_pkg[tech_key] = pkg
                     
-            # If strategy is NVD_ONLY or OSV_AND_NVD, map to CPE candidate
+            # If strategy involves NVD, map to CPE candidate
             if strategy in (LookupStrategyType.NVD_ONLY, LookupStrategyType.OSV_AND_NVD):
-                cpe_candidate_str = get_cpe_candidate(tech_key, normalized_version)
-                if cpe_candidate_str:
-                    parts = cpe_candidate_str.split(":")
-                    if len(parts) >= 5:
-                        vendor = parts[3]
-                        product = parts[4]
-                        cpe_template = f"cpe:2.3:a:{vendor}:{product}:*:*:*:*:*:*:*"
-                        candidate = CPECandidate(
-                            cpe_template=cpe_template,
-                            detected_version=normalized_version,
-                            resolved_cpe=cpe_candidate_str,
-                            confidence=tech.confidence,
-                            source="catalog",
-                            vendor=vendor,
-                            product=product,
-                            exact_version_match=True,
-                            match_type=ResolverMatchType.EXACT
-                        )
-                        corr_result = CorrelationResult(
-                            technology=tech_key,
-                            inventory_technology_key=tech_key,
-                            candidates=[candidate],
-                            selected_candidate=candidate,
-                            resolution_confidence=tech.confidence
-                        )
-                        nvd_correlation_results.append((tech_key, corr_result))
-                        
+                if elig.cpe_vendor and elig.cpe_product:
+                    ver_for_cpe = normalized_version or "*"
+                    cpe_str = f"cpe:2.3:a:{elig.cpe_vendor}:{elig.cpe_product}:{ver_for_cpe}:*:*:*:*:*:*:*"
+                    cpe_template = f"cpe:2.3:a:{elig.cpe_vendor}:{elig.cpe_product}:*:*:*:*:*:*:*"
+                    candidate = CPECandidate(
+                        cpe_template=cpe_template,
+                        detected_version=normalized_version,
+                        resolved_cpe=cpe_str,
+                        confidence=tech.confidence,
+                        source="catalog",
+                        vendor=elig.cpe_vendor,
+                        product=elig.cpe_product,
+                        exact_version_match=bool(normalized_version),
+                        match_type=ResolverMatchType.EXACT
+                    )
+                    corr_result = CorrelationResult(
+                        technology=tech_key,
+                        inventory_technology_key=tech_key,
+                        candidates=[candidate],
+                        selected_candidate=candidate,
+                        resolution_confidence=tech.confidence
+                    )
+                    nvd_correlation_results.append((tech_key, corr_result))
+                    
             # Ensure at least a dummy package exists for display/remediation if no lookup mapped it
             if tech_key not in tech_to_pkg:
                 tech_to_pkg[tech_key] = PackageInfo(

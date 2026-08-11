@@ -162,5 +162,25 @@ TECHNOLOGY_CATALOG = {
         "cpe": "cpe:2.3:a:vitejs:vite",
         "supports_versions": True,
         "coverage": "partial"
+    },
+    "bootstrap": {
+        "display_name": "Bootstrap",
+        "aliases": ["bootstrap", "twitter-bootstrap"],
+        "lookup_strategy": "both",
+        "ecosystem": "npm",
+        "package": "bootstrap",
+        "cpe": "cpe:2.3:a:getbootstrap:bootstrap",
+        "supports_versions": True,
+        "coverage": "partial"
+    },
+    "tailwind": {
+        "display_name": "Tailwind CSS",
+        "aliases": ["tailwind", "tailwindcss"],
+        "lookup_strategy": "both",
+        "ecosystem": "npm",
+        "package": "tailwindcss",
+        "cpe": "cpe:2.3:a:tailwindcss:tailwindcss",
+        "supports_versions": True,
+        "coverage": "partial"
     }
 }

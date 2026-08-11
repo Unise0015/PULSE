@@ -358,6 +358,8 @@ class WebsiteAssessment:
     correlation_completed_at: Optional[datetime] = None
     correlated_technologies: int = 0
     failed_technologies: int = 0
+    technology_eligibilities: Dict[str, Any] = field(default_factory=dict)
+
 
 @dataclass
 class ScanResult:
