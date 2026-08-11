@@ -699,7 +699,7 @@
       "googlecommerce\\.com/trustedstores/api/js"
     ],
     "url": "/(?:cart|order|basket|trolley|bag|shoppingbag|checkout)",
-    "website": "https://www.wappalyzer.com/technologies/ecommerce/cart-functionality"
+    "website": "https://github.com/Unise0015/PULSE"
   },
   "Cart.com": {
     "cats": [
