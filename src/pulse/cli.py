@@ -112,13 +112,13 @@ def auto_discover():
     post_scan_menu(scan_result)
 
 def scan_single_package_menu():
-    from pulse.ecosystems import registry
-    from pulse.ecosystems.smart_detection import SmartEcosystemDetector, DetectionResult, DetectionSource, DetectionStatus
+    from pulse.ecosystems.package_resolution import PackageResolutionService
     from pulse.state import AppState
     import os
+    import asyncio
     
     console.print("\n[bold]Scan a Package Across Any Supported Ecosystem[/bold]")
-    detector = SmartEcosystemDetector(registry)
+    resolver = PackageResolutionService()
     
     name = None
     while True:
@@ -141,18 +141,14 @@ def scan_single_package_menu():
         is_latest_lookup = version.lower() in ("latest", "*")
         
         with console.status("[cyan]Detecting package...[/cyan]", spinner="dots"):
-            result: DetectionResult = detector.resolve_package(
-                name,
-                Path(os.getcwd()),
-                None if is_latest_lookup else version,
-                AppState.OFFLINE_MODE
-            )
-        
-        provider = None
-        
-        if result.status == DetectionStatus.PACKAGE_NOT_FOUND:
-            console.print(f"\n[yellow]Package \"{name}\" was not found in any supported registry.[/yellow]\n")
-            console.print("Check the spelling.\n")
+            result = asyncio.run(resolver.resolve(name, None if is_latest_lookup else version))
+            
+        if not result.candidates:
+            console.print(f"\n[yellow]✗ Package \"{name}\" not found[/yellow]")
+            if result.network_error:
+                console.print("[yellow]Unable to verify package because package registries are unavailable.[/yellow]")
+            else:
+                console.print("Check the spelling.\n")
             choice = questionary.select(
                 "What would you like to do?",
                 choices=[
@@ -165,55 +161,56 @@ def scan_single_package_menu():
                 continue
             else:
                 return
-                
-        elif result.status == DetectionStatus.VERSION_NOT_FOUND:
-            console.print(f"\n[bold green]✓ {name} found on {result.registry_name}[/bold green]")
-            console.print(f"\n[yellow]Version \"{version}\" was not found.[/yellow]\n")
-            if result.latest_available_version:
-                console.print(f"Latest available version: {result.latest_available_version}\n")
+
+        if not result.version_exists and not is_latest_lookup and not result.requires_user_selection:
+            console.print(f"\n[bold green]✓ {name} identified[/bold green]")
+            console.print(f"[bold green]✓ Ecosystem: {result.ecosystem}[/bold green]")
+            console.print(f"[yellow]✗ Version {version} not found[/yellow]\n")
             # Only loop again, leaving `name` populated
             continue
-            
-        elif result.status == DetectionStatus.NETWORK_ERROR or result.status == DetectionStatus.OFFLINE:
-            if result.status == DetectionStatus.NETWORK_ERROR:
-                console.print("\n[yellow]Unable to verify the package because registry services are unavailable.[/yellow]")
-                console.print("[yellow]Proceeding using heuristic detection...[/yellow]\n")
-            if result.candidates and len(result.candidates) == 1:
-                provider = result.candidates[0]
-                console.print(f"\n[bold green]✓ {name} found on {provider.registry_name}[/bold green]")
-                break
-            # Otherwise falls through to ambiguous
-            
-        elif result.status == DetectionStatus.SUCCESS:
-            provider = result.provider
-            console.print(f"\n[bold green]✓ {name} found on {result.registry_name}[/bold green]")
-            break
-            
-        # Ambiguous or fallback heuristics
-        if result.status == DetectionStatus.AMBIGUOUS or not provider:
-            console.print("\n[yellow]Package detected in multiple ecosystems.[/yellow]\n")
-            choices = []
-            for cp in result.candidates:
-                choices.append(f"{cp.display_name} ({cp.registry_name})")
-            
-            selected = questionary.select("\nSelect ecosystem:", choices=choices).ask()
-            if not selected:
-                return
-                
-            for p in result.candidates:
-                if selected == f"{p.display_name} ({p.registry_name})":
-                    provider = p
-                    break
-            break
 
-    if provider is None:
-        console.print("[red]Unable to determine the appropriate provider.[/red]")
+        if not result.requires_user_selection:
+            console.print(f"\n[bold green]✓ {result.package_name} identified[/bold green]")
+            console.print(f"[bold green]✓ Ecosystem: {result.ecosystem}[/bold green]")
+            if not is_latest_lookup:
+                console.print(f"[bold green]✓ Version {version} verified[/bold green]")
+            
+            if result.provider is None:
+                console.print("[yellow]⚠ Vulnerability intelligence unavailable for this ecosystem.[/yellow]")
+                
+            console.print("\n[cyan]Scanning...[/cyan]")
+            break
+            
+        # Ambiguous
+        console.print("\n[yellow]Package detected in multiple ecosystems.[/yellow]\n")
+        choices = []
+        for cp in result.alternative_candidates:
+            choices.append(f"{cp.ecosystem} ({cp.registry_name}) — {cp.confidence}%")
+        
+        selected = questionary.select("\nSelect ecosystem:", choices=choices).ask()
+        if not selected:
+            return
+            
+        for cp in result.alternative_candidates:
+            if selected.startswith(f"{cp.ecosystem} ({cp.registry_name})"):
+                result.provider = cp.provider
+                result.ecosystem = cp.ecosystem
+                break
+        
+        if result.provider is None:
+            console.print("[yellow]⚠ Vulnerability intelligence unavailable for this ecosystem.[/yellow]")
+            return
+            
+        break
+
+    if result.provider is None:
+        console.print("[red]Unable to proceed without a supported vulnerability provider.[/red]")
         return
-    
+        
     from pulse.domain.models import PackageInfo
-    pkg = PackageInfo(name=name, version="" if is_latest_lookup else version, ecosystem=provider.manifest.ecosystem)
+    pkg = PackageInfo(name=name, version="" if is_latest_lookup else version, ecosystem=result.provider.manifest.ecosystem)
     
-    target_id = f"{provider.manifest.ecosystem}:{name.lower()}"
+    target_id = f"{result.provider.manifest.ecosystem}:{name.lower()}"
     
     if is_latest_lookup:
         console.print("\n[bold]Scanning latest available release...[/bold]")
