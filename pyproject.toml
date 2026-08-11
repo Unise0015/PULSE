@@ -33,5 +33,9 @@ pulse = "pulse.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+pulse = ["data/*.json", "data/web_signatures/*.json"]
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+

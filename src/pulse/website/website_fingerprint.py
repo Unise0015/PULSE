@@ -10,10 +10,12 @@ from pulse.domain.models import (
 )
 from pulse.website.signatures import SignatureRegistry
 from pulse.website.confidence import WeightedMaxBonusCalculator, get_confidence_band
+from pulse.website.declarative_engine import DeclarativeSignatureEngine
+from pulse.website.favicon_fingerprint import FaviconFingerprinter
 
 import ipaddress
 import logging
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 from pulse.config import get_setting
 
 logger = logging.getLogger(__name__)
@@ -21,6 +23,15 @@ logger = logging.getLogger(__name__)
 MAX_BODY_SIZE = 2 * 1024 * 1024  # 2 MB
 TIMEOUT = 10.0
 MAX_REDIRECTS = 5
+
+_DECLARATIVE_ENGINE: Optional[DeclarativeSignatureEngine] = None
+
+def get_declarative_engine() -> DeclarativeSignatureEngine:
+    global _DECLARATIVE_ENGINE
+    if _DECLARATIVE_ENGINE is None:
+        _DECLARATIVE_ENGINE = DeclarativeSignatureEngine()
+    return _DECLARATIVE_ENGINE
+
 
 def validate_url(url: str, external_only: bool = False) -> Tuple[bool, str]:
     """Pre-request URL validator. Rejects malformed URLs and unsupported protocols."""
@@ -192,8 +203,44 @@ class WebsiteFingerprintAnalyzer:
                     children=[]
                 ))
 
+        # 2.5 Declarative Signature Engine Execution (Wappalyzer 3000+ JSON Signatures)
+        try:
+            decl_engine = get_declarative_engine()
+            decl_fingerprints = decl_engine.analyze(
+                url=url,
+                headers=response_headers,
+                cookies=cookies,
+                html_body=body,
+                script_urls=script_srcs
+            )
+            for dfp in decl_fingerprints:
+                cpe_cands = []
+                if dfp.cpe:
+                    cpe_cands.append(CPECandidate(cpe=dfp.cpe, confidence=dfp.confidence))
+                dfp.cpe_candidates = cpe_cands
+                dfp.confidence_band = get_confidence_band(dfp.confidence)
+                detected_fingerprints.append(dfp)
+        except Exception as e:
+            logger.warning("Declarative web signature engine execution failed: %s", e)
+
+        # 2.6 Favicon Fingerprinting (Hash Matching)
+        try:
+            favicon_url = urljoin(url, "/favicon.ico")
+            with httpx.Client(timeout=3.0, follow_redirects=True) as fav_client:
+                fav_resp = fav_client.get(favicon_url)
+                if fav_resp.status_code == 200 and fav_resp.content:
+                    fav_fp = FaviconFingerprinter.identify(fav_resp.content)
+                    if fav_fp:
+                        if fav_fp.cpe:
+                            fav_fp.cpe_candidates = [CPECandidate(cpe=fav_fp.cpe, confidence=100)]
+                        fav_fp.confidence_band = get_confidence_band(100)
+                        detected_fingerprints.append(fav_fp)
+        except Exception:
+            pass
+
         # 3. Deduplicate final list of technologies by name
         final_techs = self._deduplicate(detected_fingerprints)
+
         
         # 4. Establish relationships
         tech_map = {f.signature_id: f for f in final_techs if f.signature_id}
