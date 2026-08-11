@@ -1,0 +1,17 @@
+{
+  "Docker": {
+    "domain": "containers",
+    "vendor": "Docker",
+    "cats": ["Container Engine"],
+    "cpe": "cpe:2.3:a:docker:docker:*:*:*:*:*:*:*:*",
+    "headers": {
+      "Server": "^Docker(?:/([0-9.]+))?\\;version:\\1"
+    }
+  },
+  "Kubernetes": {
+    "domain": "containers",
+    "vendor": "CNCF",
+    "cats": ["Container Orchestration"],
+    "cpe": "cpe:2.3:a:kubernetes:kubernetes:*:*:*:*:*:*:*:*"
+  }
+}

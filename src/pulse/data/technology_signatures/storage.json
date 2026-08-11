@@ -1,0 +1,27 @@
+{
+  "TrueNAS": {
+    "domain": "storage",
+    "vendor": "iXsystems",
+    "cats": ["NAS Storage"],
+    "cpe": "cpe:2.3:a:ixsystems:truenas:*:*:*:*:*:*:*:*",
+    "html": ["TrueNAS"]
+  },
+  "Synology DSM": {
+    "domain": "storage",
+    "vendor": "Synology",
+    "cats": ["NAS Operating System"],
+    "cpe": "cpe:2.3:o:synology:diskstation_manager:*:*:*:*:*:*:*:*",
+    "headers": {
+      "Server": "^Synology"
+    }
+  },
+  "MinIO": {
+    "domain": "storage",
+    "vendor": "MinIO",
+    "cats": ["Object Storage"],
+    "cpe": "cpe:2.3:a:minio:minio:*:*:*:*:*:*:*:*",
+    "headers": {
+      "Server": "^MinIO(?:/RELEASE\\.([0-9T:-]+))?\\;version:\\1"
+    }
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "Grafana": {
+    "domain": "monitoring",
+    "vendor": "Grafana Labs",
+    "cats": ["Monitoring", "Dashboard"],
+    "cpe": "cpe:2.3:a:grafana:grafana:*:*:*:*:*:*:*:*",
+    "html": ["<title>Grafana</title>"],
+    "cookies": {
+      "grafana_session": ""
+    }
+  },
+  "Prometheus": {
+    "domain": "monitoring",
+    "vendor": "CNCF",
+    "cats": ["Monitoring", "Metrics"],
+    "cpe": "cpe:2.3:a:prometheus:prometheus:*:*:*:*:*:*:*:*",
+    "html": ["<title>Prometheus Time Series Collection and Processing Server</title>"]
+  },
+  "Zabbix": {
+    "domain": "monitoring",
+    "vendor": "Zabbix",
+    "cats": ["Monitoring"],
+    "cpe": "cpe:2.3:a:zabbix:zabbix:*:*:*:*:*:*:*:*",
+    "cookies": {
+      "zbx_sessionid": ""
+    }
+  }
+}

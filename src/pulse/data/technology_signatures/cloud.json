@@ -1,0 +1,49 @@
+{
+  "Amazon Web Services": {
+    "domain": "cloud",
+    "vendor": "Amazon Web Services",
+    "cats": ["Cloud Provider"],
+    "cpe": "cpe:2.3:a:amazon:amazon_web_services:*:*:*:*:*:*:*:*",
+    "headers": {
+      "X-Amz-Cf-Id": "",
+      "Server": "^AmazonS3$"
+    }
+  },
+  "Microsoft Azure": {
+    "domain": "cloud",
+    "vendor": "Microsoft",
+    "cats": ["Cloud Provider"],
+    "cpe": "cpe:2.3:a:microsoft:azure:*:*:*:*:*:*:*:*",
+    "headers": {
+      "X-Azure-Ref": ""
+    }
+  },
+  "Google Cloud": {
+    "domain": "cloud",
+    "vendor": "Google",
+    "cats": ["Cloud Provider"],
+    "cpe": "cpe:2.3:a:google:google_cloud_platform:*:*:*:*:*:*:*:*",
+    "headers": {
+      "Server": "^gws$"
+    }
+  },
+  "Vercel": {
+    "domain": "cloud",
+    "vendor": "Vercel",
+    "cats": ["PaaS", "Cloud Host"],
+    "cpe": "cpe:2.3:a:vercel:vercel:*:*:*:*:*:*:*:*",
+    "headers": {
+      "Server": "^Vercel$",
+      "X-Vercel-Id": ""
+    }
+  },
+  "Netlify": {
+    "domain": "cloud",
+    "vendor": "Netlify",
+    "cats": ["PaaS", "Cloud Host"],
+    "cpe": "cpe:2.3:a:netlify:netlify:*:*:*:*:*:*:*:*",
+    "headers": {
+      "Server": "^Netlify$"
+    }
+  }
+}

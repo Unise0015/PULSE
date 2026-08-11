@@ -1,0 +1,26 @@
+{
+  "Splunk": {
+    "domain": "siem",
+    "vendor": "Splunk",
+    "cats": ["SIEM", "Log Management"],
+    "cpe": "cpe:2.3:a:splunk:splunk:*:*:*:*:*:*:*:*",
+    "cookies": {
+      "splunkwebform": ""
+    }
+  },
+  "Graylog": {
+    "domain": "siem",
+    "vendor": "Graylog",
+    "cats": ["Log Management"],
+    "cpe": "cpe:2.3:a:graylog:graylog:*:*:*:*:*:*:*:*",
+    "headers": {
+      "X-Graylog-Server-URL": ""
+    }
+  },
+  "Wazuh": {
+    "domain": "siem",
+    "vendor": "Wazuh",
+    "cats": ["SIEM", "Security Monitoring"],
+    "cpe": "cpe:2.3:a:wazuh:wazuh:*:*:*:*:*:*:*:*"
+  }
+}

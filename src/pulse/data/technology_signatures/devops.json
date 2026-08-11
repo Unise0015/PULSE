@@ -1,0 +1,48 @@
+{
+  "Jenkins": {
+    "domain": "devops",
+    "vendor": "Jenkins",
+    "cats": ["CI/CD", "DevOps"],
+    "cpe": "cpe:2.3:a:jenkins:jenkins:*:*:*:*:*:*:*:*",
+    "headers": {
+      "X-Jenkins": "^([0-9.]+)?\\;version:\\1",
+      "X-Hudson": ""
+    }
+  },
+  "GitLab": {
+    "domain": "devops",
+    "vendor": "GitLab",
+    "cats": ["DevOps", "Version Control"],
+    "cpe": "cpe:2.3:a:gitlab:gitlab:*:*:*:*:*:*:*:*",
+    "cookies": {
+      "_gitlab_session": ""
+    }
+  },
+  "GitHub Enterprise": {
+    "domain": "devops",
+    "vendor": "GitHub",
+    "cats": ["DevOps", "Version Control"],
+    "cpe": "cpe:2.3:a:github:github:*:*:*:*:*:*:*:*",
+    "headers": {
+      "X-GitHub-Request-Id": ""
+    }
+  },
+  "Gitea": {
+    "domain": "devops",
+    "vendor": "Gitea",
+    "cats": ["DevOps", "Version Control"],
+    "cpe": "cpe:2.3:a:gitea:gitea:*:*:*:*:*:*:*:*",
+    "meta": {
+      "keywords": "^gitea"
+    }
+  },
+  "JFrog Artifactory": {
+    "domain": "devops",
+    "vendor": "JFrog",
+    "cats": ["Artifact Registry"],
+    "cpe": "cpe:2.3:a:jfrog:artifactory:*:*:*:*:*:*:*:*",
+    "headers": {
+      "X-Artifactory-Id": ""
+    }
+  }
+}

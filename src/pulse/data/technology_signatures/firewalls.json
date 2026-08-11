@@ -1,0 +1,24 @@
+{
+  "pfSense": {
+    "domain": "firewall",
+    "vendor": "Netgate",
+    "cats": ["Firewall"],
+    "cpe": "cpe:2.3:a:pfsense:pfsense:*:*:*:*:*:*:*:*",
+    "html": ["pfSense - Login"]
+  },
+  "Fortinet FortiGate": {
+    "domain": "firewall",
+    "vendor": "Fortinet",
+    "cats": ["Firewall"],
+    "cpe": "cpe:2.3:o:fortinet:fortios:*:*:*:*:*:*:*:*",
+    "headers": {
+      "Server": "^FortiGate"
+    }
+  },
+  "Palo Alto PAN-OS": {
+    "domain": "firewall",
+    "vendor": "Palo Alto Networks",
+    "cats": ["Firewall"],
+    "cpe": "cpe:2.3:o:paloaltonetworks:pan-os:*:*:*:*:*:*:*:*"
+  }
+}

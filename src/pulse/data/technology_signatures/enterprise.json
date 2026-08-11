@@ -1,0 +1,32 @@
+{
+  "Nextcloud": {
+    "domain": "enterprise",
+    "vendor": "Nextcloud",
+    "cats": ["Collaboration", "Storage"],
+    "cpe": "cpe:2.3:a:nextcloud:nextcloud_server:*:*:*:*:*:*:*:*",
+    "headers": {
+      "X-Nextcloud-Version": "^([0-9.]+)\\;version:\\1"
+    },
+    "cookies": {
+      "nc_session_id": ""
+    }
+  },
+  "Confluence": {
+    "domain": "enterprise",
+    "vendor": "Atlassian",
+    "cats": ["Collaboration", "Wiki"],
+    "cpe": "cpe:2.3:a:atlassian:confluence_server:*:*:*:*:*:*:*:*",
+    "meta": {
+      "confluence-request-time": ""
+    }
+  },
+  "Jira": {
+    "domain": "enterprise",
+    "vendor": "Atlassian",
+    "cats": ["Issue Tracker"],
+    "cpe": "cpe:2.3:a:atlassian:jira:*:*:*:*:*:*:*:*",
+    "meta": {
+      "ajs-jira-build-number": ""
+    }
+  }
+}

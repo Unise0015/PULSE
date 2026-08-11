@@ -1,0 +1,123 @@
+{
+  "PHP": {
+    "domain": "backend",
+    "vendor": "PHP Group",
+    "cats": ["Programming Language"],
+    "cpe": "cpe:2.3:a:php:php:*:*:*:*:*:*:*:*",
+    "headers": {
+      "X-Powered-By": "^PHP(?:/([0-9.]+))?\\;version:\\1"
+    },
+    "cookies": {
+      "PHPSESSID": ""
+    }
+  },
+  "Node.js": {
+    "domain": "backend",
+    "vendor": "OpenJS Foundation",
+    "cats": ["Programming Language", "Runtime"],
+    "cpe": "cpe:2.3:a:nodejs:node.js:*:*:*:*:*:*:*:*",
+    "headers": {
+      "X-Powered-By": "^Node\\.js"
+    }
+  },
+  "Python": {
+    "domain": "backend",
+    "vendor": "Python Software Foundation",
+    "cats": ["Programming Language"],
+    "cpe": "cpe:2.3:a:python:python:*:*:*:*:*:*:*:*",
+    "headers": {
+      "Server": "^Python(?:/([0-9.]+))?\\;version:\\1"
+    }
+  },
+  "Django": {
+    "domain": "backend",
+    "vendor": "Django Software Foundation",
+    "cats": ["Web Framework"],
+    "cpe": "cpe:2.3:a:djangoproject:django:*:*:*:*:*:*:*:*",
+    "implies": ["Python"],
+    "cookies": {
+      "csrftoken": ""
+    }
+  },
+  "Flask": {
+    "domain": "backend",
+    "vendor": "Pallets",
+    "cats": ["Web Framework"],
+    "cpe": "cpe:2.3:a:palletsprojects:flask:*:*:*:*:*:*:*:*",
+    "implies": ["Python"],
+    "headers": {
+      "Server": "^Werkzeug(?:/([0-9.]+))?\\;version:\\1"
+    }
+  },
+  "FastAPI": {
+    "domain": "backend",
+    "vendor": "tiangolo",
+    "cats": ["Web Framework"],
+    "cpe": "cpe:2.3:a:tiangolo:fastapi:*:*:*:*:*:*:*:*",
+    "implies": ["Python"],
+    "headers": {
+      "Server": "^uvicorn"
+    }
+  },
+  "Ruby": {
+    "domain": "backend",
+    "vendor": "Ruby",
+    "cats": ["Programming Language"],
+    "cpe": "cpe:2.3:a:ruby-lang:ruby:*:*:*:*:*:*:*:*",
+    "headers": {
+      "Server": "^Phusion Passenger(?: ([0-9.]+))?\\;version:\\1"
+    }
+  },
+  "Ruby on Rails": {
+    "domain": "backend",
+    "vendor": "Rails",
+    "cats": ["Web Framework"],
+    "cpe": "cpe:2.3:a:rubyonrails:ruby_on_rails:*:*:*:*:*:*:*:*",
+    "implies": ["Ruby"],
+    "headers": {
+      "X-Rack-Cache": ""
+    },
+    "cookies": {
+      "_session_id": ""
+    }
+  },
+  "Java": {
+    "domain": "backend",
+    "vendor": "Oracle",
+    "cats": ["Programming Language"],
+    "cpe": "cpe:2.3:a:oracle:jre:*:*:*:*:*:*:*:*",
+    "headers": {
+      "X-Powered-By": "^Servlet(?:/([0-9.]+))?\\;version:\\1"
+    }
+  },
+  "Spring Boot": {
+    "domain": "backend",
+    "vendor": "VMware",
+    "cats": ["Web Framework"],
+    "cpe": "cpe:2.3:a:vmware:spring_boot:*:*:*:*:*:*:*:*",
+    "implies": ["Java"],
+    "headers": {
+      "X-Application-Context": ""
+    }
+  },
+  "Laravel": {
+    "domain": "backend",
+    "vendor": "Laravel",
+    "cats": ["Web Framework"],
+    "cpe": "cpe:2.3:a:laravel:laravel:*:*:*:*:*:*:*:*",
+    "implies": ["PHP"],
+    "cookies": {
+      "laravel_session": ""
+    }
+  },
+  "ASP.NET": {
+    "domain": "backend",
+    "vendor": "Microsoft",
+    "cats": ["Web Framework"],
+    "cpe": "cpe:2.3:a:microsoft:asp.net:*:*:*:*:*:*:*:*",
+    "headers": {
+      "X-AspNet-Version": "^([0-9.]+)\\;version:\\1",
+      "X-Powered-By": "^ASP\\.NET"
+    }
+  }
+}

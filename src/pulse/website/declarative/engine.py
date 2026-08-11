@@ -160,6 +160,18 @@ class DeclarativeTechnologyEngine:
             # Convert evidence to domain model evidence
             domain_ev_list = [ev.to_domain_evidence() for ev in data.get("evidence", [])]
             version_status = DetectionStatus.VERIFIED if version_str else DetectionStatus.UNKNOWN
+            rule_obj = self.loader.technology_rules.get(name)
+            
+            rule_domain = rule_obj.domain if rule_obj else "web"
+            rule_vendor = rule_obj.vendor if rule_obj else None
+            is_inferred = data.get("inferred", False)
+
+            if version_str and cpe_cands:
+                vuln_stat = "EXACT"
+            elif cpe_cands:
+                vuln_stat = "PARTIAL"
+            else:
+                vuln_stat = "UNRESOLVED"
 
             fp = TechnologyFingerprint(
                 name=name,
@@ -171,8 +183,14 @@ class DeclarativeTechnologyEngine:
                 version_status=version_status,
                 evidence=domain_ev_list,
                 cpe_candidates=cpe_cands,
-                parent=data.get("inferred_from")
+                parent=data.get("inferred_from"),
+                vendor=rule_vendor,
+                domain=rule_domain,
+                direct_detection=not is_inferred,
+                inferred=is_inferred,
+                vulnerability_status=vuln_stat
             )
             fingerprints.append(fp)
 
         return fingerprints
+

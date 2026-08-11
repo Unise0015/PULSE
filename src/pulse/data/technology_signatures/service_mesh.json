@@ -1,0 +1,20 @@
+{
+  "Istio": {
+    "domain": "service_mesh",
+    "vendor": "CNCF",
+    "cats": ["Service Mesh"],
+    "cpe": "cpe:2.3:a:istio:istio:*:*:*:*:*:*:*:*",
+    "headers": {
+      "Server": "^istio-envoy$"
+    }
+  },
+  "Linkerd": {
+    "domain": "service_mesh",
+    "vendor": "CNCF",
+    "cats": ["Service Mesh"],
+    "cpe": "cpe:2.3:a:linkerd:linkerd:*:*:*:*:*:*:*:*",
+    "headers": {
+      "L5d-Proxy": ""
+    }
+  }
+}

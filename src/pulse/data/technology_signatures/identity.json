@@ -1,0 +1,23 @@
+{
+  "Keycloak": {
+    "domain": "identity",
+    "vendor": "Red Hat",
+    "cats": ["IAM", "SSO"],
+    "cpe": "cpe:2.3:a:redhat:keycloak:*:*:*:*:*:*:*:*",
+    "html": ["/auth/realms/"]
+  },
+  "Auth0": {
+    "domain": "identity",
+    "vendor": "Okta",
+    "cats": ["IAM", "SSO"],
+    "cpe": "cpe:2.3:a:okta:auth0:*:*:*:*:*:*:*:*",
+    "scriptSrc": ["cdn\\.auth0\\.com"]
+  },
+  "Okta": {
+    "domain": "identity",
+    "vendor": "Okta",
+    "cats": ["IAM", "SSO"],
+    "cpe": "cpe:2.3:a:okta:okta:*:*:*:*:*:*:*:*",
+    "scriptSrc": ["oktacdn\\.com"]
+  }
+}

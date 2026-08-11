@@ -1,0 +1,35 @@
+{
+  "Apache Kafka": {
+    "domain": "messaging",
+    "vendor": "Apache",
+    "cats": ["Message Broker", "Event Streaming"],
+    "cpe": "cpe:2.3:a:apache:kafka:*:*:*:*:*:*:*:*"
+  },
+  "RabbitMQ": {
+    "domain": "messaging",
+    "vendor": "VMware",
+    "cats": ["Message Broker"],
+    "cpe": "cpe:2.3:a:vmware:rabbitmq:*:*:*:*:*:*:*:*",
+    "headers": {
+      "Server": "^RabbitMQ(?:/([0-9.]+))?\\;version:\\1"
+    }
+  },
+  "Apache ActiveMQ": {
+    "domain": "messaging",
+    "vendor": "Apache",
+    "cats": ["Message Broker"],
+    "cpe": "cpe:2.3:a:apache:activemq:*:*:*:*:*:*:*:*"
+  },
+  "NATS": {
+    "domain": "messaging",
+    "vendor": "CNCF",
+    "cats": ["Message Broker"],
+    "cpe": "cpe:2.3:a:nats:nats_server:*:*:*:*:*:*:*:*"
+  },
+  "Eclipse Mosquitto": {
+    "domain": "messaging",
+    "vendor": "Eclipse Foundation",
+    "cats": ["MQTT Broker"],
+    "cpe": "cpe:2.3:a:eclipse:mosquitto:*:*:*:*:*:*:*:*"
+  }
+}

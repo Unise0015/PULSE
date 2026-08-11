@@ -1,0 +1,83 @@
+{
+  "Nginx": {
+    "domain": "web",
+    "vendor": "F5",
+    "cats": ["Web Server", "Reverse Proxy"],
+    "cpe": "cpe:2.3:a:f5:nginx:*:*:*:*:*:*:*:*",
+    "headers": {
+      "Server": "^nginx(?:/([0-9.]+))?\\;version:\\1"
+    }
+  },
+  "Apache HTTP Server": {
+    "domain": "web",
+    "vendor": "Apache",
+    "cats": ["Web Server"],
+    "cpe": "cpe:2.3:a:apache:http_server:*:*:*:*:*:*:*:*",
+    "headers": {
+      "Server": "^Apache(?:/([0-9.]+))?\\;version:\\1"
+    }
+  },
+  "Microsoft IIS": {
+    "domain": "web",
+    "vendor": "Microsoft",
+    "cats": ["Web Server"],
+    "cpe": "cpe:2.3:a:microsoft:internet_information_services:*:*:*:*:*:*:*:*",
+    "headers": {
+      "Server": "^Microsoft-IIS(?:/([0-9.]+))?\\;version:\\1"
+    }
+  },
+  "Apache Tomcat": {
+    "domain": "web",
+    "vendor": "Apache",
+    "cats": ["Web Server", "Application Server"],
+    "cpe": "cpe:2.3:a:apache:tomcat:*:*:*:*:*:*:*:*",
+    "headers": {
+      "Server": "^Apache-Coyote(?:/([0-9.]+))?\\;version:\\1"
+    }
+  },
+  "Caddy": {
+    "domain": "web",
+    "vendor": "Caddy",
+    "cats": ["Web Server"],
+    "cpe": "cpe:2.3:a:caddyserver:caddy:*:*:*:*:*:*:*:*",
+    "headers": {
+      "Server": "^Caddy(?:/v?([0-9.]+))?\\;version:\\1"
+    }
+  },
+  "Lighttpd": {
+    "domain": "web",
+    "vendor": "Lighttpd",
+    "cats": ["Web Server"],
+    "cpe": "cpe:2.3:a:lighttpd:lighttpd:*:*:*:*:*:*:*:*",
+    "headers": {
+      "Server": "^lighttpd(?:/([0-9.]+))?\\;version:\\1"
+    }
+  },
+  "HAProxy": {
+    "domain": "web",
+    "vendor": "HAProxy",
+    "cats": ["Load Balancer", "Reverse Proxy"],
+    "cpe": "cpe:2.3:a:haproxy:haproxy:*:*:*:*:*:*:*:*",
+    "headers": {
+      "Server": "^HAProxy(?:/([0-9.]+))?\\;version:\\1"
+    }
+  },
+  "Envoy": {
+    "domain": "web",
+    "vendor": "CNCF",
+    "cats": ["Proxy", "Service Mesh"],
+    "cpe": "cpe:2.3:a:envoyproxy:envoy:*:*:*:*:*:*:*:*",
+    "headers": {
+      "Server": "^envoy$"
+    }
+  },
+  "Traefik": {
+    "domain": "web",
+    "vendor": "Traefik",
+    "cats": ["Reverse Proxy", "API Gateway"],
+    "cpe": "cpe:2.3:a:traefik:traefik:*:*:*:*:*:*:*:*",
+    "headers": {
+      "Server": "^Traefik(?:/v?([0-9.]+))?\\;version:\\1"
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "HP iLO": {
+    "domain": "embedded",
+    "vendor": "Hewlett Packard Enterprise",
+    "cats": ["Server Management"],
+    "cpe": "cpe:2.3:o:hp:integrated_lights-out:*:*:*:*:*:*:*:*",
+    "html": ["Integrated Lights-Out"]
+  },
+  "Dell iDRAC": {
+    "domain": "embedded",
+    "vendor": "Dell",
+    "cats": ["Server Management"],
+    "cpe": "cpe:2.3:o:dell:idrac:*:*:*:*:*:*:*:*",
+    "html": ["Integrated Dell Remote Access Controller"]
+  }
+}

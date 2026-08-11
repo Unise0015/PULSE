@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 # Default directory path for web signature files
 DEFAULT_SIGNATURES_DIR = Path(__file__).parent.parent.parent / "data" / "web_signatures"
+DEFAULT_TECH_PACKS_DIR = Path(__file__).parent.parent.parent / "data" / "technology_signatures"
 
 
 class SignatureLoader:
@@ -21,6 +22,7 @@ class SignatureLoader:
 
     def __init__(self, signatures_dir: Optional[Path] = None):
         self.signatures_dir = signatures_dir or DEFAULT_SIGNATURES_DIR
+        self.tech_packs_dir = DEFAULT_TECH_PACKS_DIR
         self.categories: Dict[int, str] = {}
         self.technology_rules: Dict[str, TechnologyRule] = {}
         self._compiled_cache: Dict[str, Optional[re.Pattern]] = {}
@@ -38,10 +40,10 @@ class SignatureLoader:
                     for cid_str, cat_info in data.items():
                         try:
                             cid = int(cid_str)
-                            name = cat_info.get("name", f"Category {cid}") if isinstance(cat_info, dict) else str(cat_info)
-                            self.categories[cid] = name
+                            if isinstance(cat_info, dict) and "name" in cat_info:
+                                self.categories[cid] = cat_info["name"]
                         except ValueError:
-                            pass
+                            continue
         except Exception as e:
             logger.warning("Error loading categories.json: %s", e)
 
@@ -52,12 +54,13 @@ class SignatureLoader:
         version_group = None
         confidence = 100
 
-        for modifier in parts[1:]:
-            if modifier.startswith("version:"):
-                version_group = modifier[8:]
-            elif modifier.startswith("confidence:"):
+        for mod in parts[1:]:
+            mod = mod.strip()
+            if mod.startswith("version:"):
+                version_group = mod.split(":", 1)[1]
+            elif mod.startswith("confidence:"):
                 try:
-                    confidence = int(modifier[11:])
+                    confidence = int(mod.split(":", 1)[1])
                 except ValueError:
                     pass
 
@@ -93,34 +96,38 @@ class SignatureLoader:
 
 
     def load_all(self) -> Dict[str, TechnologyRule]:
-        """Loads and parses all JSON signature files in signatures_dir."""
+        """Loads and parses all JSON signature files in signatures_dir and tech_packs_dir."""
         self._load_categories()
 
-        if not self.signatures_dir.exists():
-            logger.warning("Signature directory does not exist: %s", self.signatures_dir)
-            return self.technology_rules
+        dirs_to_scan = [self.signatures_dir]
+        if self.tech_packs_dir.exists():
+            dirs_to_scan.append(self.tech_packs_dir)
 
-        json_files = list(self.signatures_dir.glob("*.json"))
         loaded_count = 0
 
-        for json_path in json_files:
-            if json_path.name == "categories.json":
+        for sig_dir in dirs_to_scan:
+            if not sig_dir.exists():
                 continue
-            try:
-                with open(json_path, "r", encoding="utf-8") as f:
-                    tech_dict = json.load(f)
-                    if not isinstance(tech_dict, dict):
-                        continue
-                    for tech_name, tech_data in tech_dict.items():
-                        if not isinstance(tech_data, dict):
-                            continue
-                        rule = self._build_technology_rule(tech_name, tech_data)
-                        self.technology_rules[tech_name] = rule
-                        loaded_count += 1
-            except Exception as e:
-                logger.warning("Skipping corrupted signature file %s: %s", json_path.name, e)
 
-        logger.info("Successfully loaded %d technology rules from %d files.", loaded_count, len(json_files))
+            json_files = list(sig_dir.glob("*.json"))
+            for json_path in json_files:
+                if json_path.name == "categories.json":
+                    continue
+                try:
+                    with open(json_path, "r", encoding="utf-8") as f:
+                        tech_dict = json.load(f)
+                        if not isinstance(tech_dict, dict):
+                            continue
+                        for tech_name, tech_data in tech_dict.items():
+                            if not isinstance(tech_data, dict):
+                                continue
+                            rule = self._build_technology_rule(tech_name, tech_data)
+                            self.technology_rules[tech_name] = rule
+                            loaded_count += 1
+                except Exception as e:
+                    logger.warning("Skipping corrupted signature file %s: %s", json_path.name, e)
+
+        logger.info("Successfully loaded %d technology rules.", loaded_count)
         return self.technology_rules
 
     def _build_technology_rule(self, tech_name: str, tech_data: Dict[str, Any]) -> TechnologyRule:
@@ -132,6 +139,12 @@ class SignatureLoader:
             for cid in raw_cats:
                 if isinstance(cid, int) and cid in self.categories:
                     cats.append(self.categories[cid])
+                elif isinstance(cid, str):
+                    cats.append(cid)
+
+        # Domain and Vendor
+        domain = tech_data.get("domain", "web")
+        vendor = tech_data.get("vendor")
 
         # Headers dict
         headers_rules: Dict[str, List[PatternRule]] = {}
@@ -202,5 +215,7 @@ class SignatureLoader:
             url=url_rules,
             cpes=cpes,
             implies=implies,
-            excludes=excludes
+            excludes=excludes,
+            domain=domain,
+            vendor=vendor
         )

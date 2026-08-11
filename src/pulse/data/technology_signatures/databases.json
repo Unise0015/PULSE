@@ -1,0 +1,60 @@
+{
+  "MySQL": {
+    "domain": "database",
+    "vendor": "Oracle",
+    "cats": ["Database"],
+    "cpe": "cpe:2.3:a:oracle:mysql:*:*:*:*:*:*:*:*"
+  },
+  "MariaDB": {
+    "domain": "database",
+    "vendor": "MariaDB Foundation",
+    "cats": ["Database"],
+    "cpe": "cpe:2.3:a:mariadb:mariadb:*:*:*:*:*:*:*:*"
+  },
+  "PostgreSQL": {
+    "domain": "database",
+    "vendor": "PostgreSQL Global Development Group",
+    "cats": ["Database"],
+    "cpe": "cpe:2.3:a:postgresql:postgresql:*:*:*:*:*:*:*:*"
+  },
+  "MongoDB": {
+    "domain": "database",
+    "vendor": "MongoDB",
+    "cats": ["NoSQL Database"],
+    "cpe": "cpe:2.3:a:mongodb:mongodb:*:*:*:*:*:*:*:*",
+    "headers": {
+      "Server": "^MongoDB(?:/([0-9.]+))?\\;version:\\1"
+    }
+  },
+  "Redis": {
+    "domain": "database",
+    "vendor": "Redis",
+    "cats": ["In-Memory Database", "Cache"],
+    "cpe": "cpe:2.3:a:redis:redis:*:*:*:*:*:*:*:*"
+  },
+  "Elasticsearch": {
+    "domain": "database",
+    "vendor": "Elastic",
+    "cats": ["Search Engine", "Database"],
+    "cpe": "cpe:2.3:a:elastic:elasticsearch:*:*:*:*:*:*:*:*",
+    "headers": {
+      "X-Elastic-Product": "^Elasticsearch"
+    }
+  },
+  "CouchDB": {
+    "domain": "database",
+    "vendor": "Apache",
+    "cats": ["NoSQL Database"],
+    "cpe": "cpe:2.3:a:apache:couchdb:*:*:*:*:*:*:*:*",
+    "headers": {
+      "Server": "^CouchDB(?:/([0-9.]+))?\\;version:\\1"
+    }
+  },
+  "Firebase": {
+    "domain": "database",
+    "vendor": "Google",
+    "cats": ["Cloud Database"],
+    "cpe": "cpe:2.3:a:google:firebase:*:*:*:*:*:*:*:*",
+    "scriptSrc": ["firebase(?:js)?(?:[.-](\\d+(?:\\.\\d+)+))?\\;version:\\1"]
+  }
+}

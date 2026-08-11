@@ -1,0 +1,71 @@
+{
+  "React": {
+    "domain": "frontend",
+    "vendor": "Meta",
+    "cats": ["JavaScript Framework"],
+    "cpe": "cpe:2.3:a:facebook:react:*:*:*:*:*:*:*:*",
+    "scriptSrc": ["react(?:-with-addons)?[.-](\\d+(?:\\.\\d+)+)[^/]*\\.js\\;version:\\1"]
+  },
+  "Vue.js": {
+    "domain": "frontend",
+    "vendor": "Vue",
+    "cats": ["JavaScript Framework"],
+    "cpe": "cpe:2.3:a:vuejs:vue:*:*:*:*:*:*:*:*",
+    "scriptSrc": ["vue(?:[.-](\\d+(?:\\.\\d+)+))?(?:\\.min)?\\.js\\;version:\\1"]
+  },
+  "Angular": {
+    "domain": "frontend",
+    "vendor": "Google",
+    "cats": ["JavaScript Framework"],
+    "cpe": "cpe:2.3:a:angular:angular:*:*:*:*:*:*:*:*",
+    "scriptSrc": ["angular(?:[.-](\\d+(?:\\.\\d+)+))?(?:\\.min)?\\.js\\;version:\\1"]
+  },
+  "Next.js": {
+    "domain": "frontend",
+    "vendor": "Vercel",
+    "cats": ["Web Framework"],
+    "cpe": "cpe:2.3:a:zeit:next.js:*:*:*:*:*:*:*:*",
+    "implies": ["React", "Node.js"],
+    "headers": {
+      "X-Powered-By": "^Next\\.js ?([0-9.]+)?\\;version:\\1"
+    }
+  },
+  "Nuxt": {
+    "domain": "frontend",
+    "vendor": "Nuxt",
+    "cats": ["Web Framework"],
+    "cpe": "cpe:2.3:a:nuxt:nuxt:*:*:*:*:*:*:*:*",
+    "implies": ["Vue.js", "Node.js"],
+    "meta": {
+      "generator": "^Nuxt(?: ([0-9.]+))?\\;version:\\1"
+    }
+  },
+  "Svelte": {
+    "domain": "frontend",
+    "vendor": "Svelte",
+    "cats": ["JavaScript Framework"],
+    "cpe": "cpe:2.3:a:svelte:svelte:*:*:*:*:*:*:*:*",
+    "scriptSrc": ["svelte(?:[.-](\\d+(?:\\.\\d+)+))?(?:\\.min)?\\.js\\;version:\\1"]
+  },
+  "jQuery": {
+    "domain": "frontend",
+    "vendor": "jQuery",
+    "cats": ["JavaScript Library"],
+    "cpe": "cpe:2.3:a:jquery:jquery:*:*:*:*:*:*:*:*",
+    "scriptSrc": ["jquery[.-](\\d+(?:\\.\\d+)+)[^/]*\\.js\\;version:\\1"]
+  },
+  "Bootstrap": {
+    "domain": "frontend",
+    "vendor": "Twitter",
+    "cats": ["UI Framework"],
+    "cpe": "cpe:2.3:a:getbootstrap:bootstrap:*:*:*:*:*:*:*:*",
+    "scriptSrc": ["bootstrap[.-](\\d+(?:\\.\\d+)+)[^/]*\\.js\\;version:\\1"]
+  },
+  "Tailwind CSS": {
+    "domain": "frontend",
+    "vendor": "Tailwind Labs",
+    "cats": ["UI Framework"],
+    "cpe": "cpe:2.3:a:tailwindcss:tailwindcss:*:*:*:*:*:*:*:*",
+    "html": ["tailwind(?:\\.min)?\\.css"]
+  }
+}

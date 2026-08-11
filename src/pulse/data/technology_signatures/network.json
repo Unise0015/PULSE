@@ -1,0 +1,29 @@
+{
+  "Cisco IOS": {
+    "domain": "network",
+    "vendor": "Cisco",
+    "cats": ["Network OS"],
+    "cpe": "cpe:2.3:o:cisco:ios:*:*:*:*:*:*:*:*",
+    "headers": {
+      "Server": "^cisco-IOS(?: ([0-9.]+))?\\;version:\\1"
+    }
+  },
+  "MikroTik RouterOS": {
+    "domain": "network",
+    "vendor": "MikroTik",
+    "cats": ["Network OS", "Router"],
+    "cpe": "cpe:2.3:o:mikrotik:routeros:*:*:*:*:*:*:*:*",
+    "headers": {
+      "Server": "^MikroTik(?:/([0-9.]+))?\\;version:\\1"
+    }
+  },
+  "Ubiquiti UniFi": {
+    "domain": "network",
+    "vendor": "Ubiquiti",
+    "cats": ["Network Controller"],
+    "cpe": "cpe:2.3:a:ubiquiti:unifi_network_application:*:*:*:*:*:*:*:*",
+    "headers": {
+      "Server": "^UniFi"
+    }
+  }
+}

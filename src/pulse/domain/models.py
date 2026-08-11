@@ -293,10 +293,16 @@ class TechnologyFingerprint:
     ecosystem: Optional[str] = None
     correlation_supported: bool = False
     detection_mode: DetectionMode = DetectionMode.PASSIVE
+    vendor: Optional[str] = None
+    domain: str = "web"
+    direct_detection: bool = True
+    inferred: bool = False
+    vulnerability_status: str = "UNTESTED"
     
     # Backward-compatible parameters mapped in __post_init__
     confidence_score: Optional[int] = None
     detection_source: Optional[str] = None
+
     
     def __post_init__(self) -> None:
         if isinstance(self.category, str):

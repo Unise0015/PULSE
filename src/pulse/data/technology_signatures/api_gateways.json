@@ -1,0 +1,39 @@
+{
+  "Kong": {
+    "domain": "api_gateway",
+    "vendor": "Kong",
+    "cats": ["API Gateway"],
+    "cpe": "cpe:2.3:a:konghq:kong:*:*:*:*:*:*:*:*",
+    "headers": {
+      "Via": "kong(?:/([0-9.]+))?\\;version:\\1",
+      "X-Kong-Response-Latency": ""
+    }
+  },
+  "Apigee": {
+    "domain": "api_gateway",
+    "vendor": "Google",
+    "cats": ["API Gateway"],
+    "cpe": "cpe:2.3:a:google:apigee:*:*:*:*:*:*:*:*",
+    "headers": {
+      "X-Apigee-Message-Id": ""
+    }
+  },
+  "Tyk": {
+    "domain": "api_gateway",
+    "vendor": "Tyk",
+    "cats": ["API Gateway"],
+    "cpe": "cpe:2.3:a:tyk:tyk_api_gateway:*:*:*:*:*:*:*:*",
+    "headers": {
+      "X-Tyk-Authorization": ""
+    }
+  },
+  "AWS API Gateway": {
+    "domain": "api_gateway",
+    "vendor": "Amazon Web Services",
+    "cats": ["Cloud API Gateway"],
+    "cpe": "cpe:2.3:a:amazon:api_gateway:*:*:*:*:*:*:*:*",
+    "headers": {
+      "X-Amzn-RequestId": ""
+    }
+  }
+}

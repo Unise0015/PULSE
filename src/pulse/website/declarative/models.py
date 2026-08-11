@@ -42,6 +42,8 @@ class TechnologyRule:
     cpes: List[str] = field(default_factory=list)
     implies: List[str] = field(default_factory=list)
     excludes: List[str] = field(default_factory=list)
+    domain: str = "web"
+    vendor: Optional[str] = None
 
 
 @dataclass

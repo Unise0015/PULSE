@@ -1,0 +1,18 @@
+{
+  "VMware ESXi": {
+    "domain": "virtualization",
+    "vendor": "VMware",
+    "cats": ["Hypervisor"],
+    "cpe": "cpe:2.3:o:vmware:esxi:*:*:*:*:*:*:*:*",
+    "html": ["VMware ESXi"]
+  },
+  "Proxmox VE": {
+    "domain": "virtualization",
+    "vendor": "Proxmox",
+    "cats": ["Virtualization Platform"],
+    "cpe": "cpe:2.3:a:proxmox:proxmox_virtual_environment:*:*:*:*:*:*:*:*",
+    "headers": {
+      "Server": "^pvedaemon"
+    }
+  }
+}

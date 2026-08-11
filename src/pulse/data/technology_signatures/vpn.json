@@ -1,0 +1,20 @@
+{
+  "OpenVPN": {
+    "domain": "vpn",
+    "vendor": "OpenVPN",
+    "cats": ["VPN"],
+    "cpe": "cpe:2.3:a:openvpn:openvpn:*:*:*:*:*:*:*:*",
+    "headers": {
+      "Server": "^OpenVPN-Server(?:/([0-9.]+))?\\;version:\\1"
+    }
+  },
+  "Pulse Secure": {
+    "domain": "vpn",
+    "vendor": "Ivanti",
+    "cats": ["VPN Gateway"],
+    "cpe": "cpe:2.3:a:ivanti:connect_secure:*:*:*:*:*:*:*:*",
+    "cookies": {
+      "DSSIGNIN": ""
+    }
+  }
+}

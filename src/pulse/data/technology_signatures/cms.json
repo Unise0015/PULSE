@@ -1,0 +1,93 @@
+{
+  "WordPress": {
+    "domain": "cms",
+    "vendor": "WordPress",
+    "cats": ["CMS"],
+    "cpe": "cpe:2.3:a:wordpress:wordpress:*:*:*:*:*:*:*:*",
+    "implies": ["PHP", "MySQL"],
+    "html": [
+      "<link rel=[\"']stylesheet[\"'] [^>]+/wp-(?:content|includes)/",
+      "/wp-(?:content|includes)/"
+    ],
+    "meta": {
+      "generator": "^WordPress(?: ([0-9.]+))?\\;version:\\1"
+    },
+    "scriptSrc": ["/wp-(?:content|includes)/"]
+  },
+
+  "Drupal": {
+    "domain": "cms",
+    "vendor": "Drupal",
+    "cats": ["CMS"],
+    "cpe": "cpe:2.3:a:drupal:drupal:*:*:*:*:*:*:*:*",
+    "implies": ["PHP"],
+    "headers": {
+      "X-Generator": "^Drupal(?: ([0-9.]+))?\\;version:\\1",
+      "X-Drupal-Cache": ""
+    },
+    "meta": {
+      "generator": "^Drupal(?: ([0-9.]+))?\\;version:\\1"
+    }
+  },
+  "Joomla": {
+    "domain": "cms",
+    "vendor": "Joomla!",
+    "cats": ["CMS"],
+    "cpe": "cpe:2.3:a:joomla:joomla!:*:*:*:*:*:*:*:*",
+    "implies": ["PHP"],
+    "meta": {
+      "generator": "^Joomla!(?: - Open Source Content Management)?(?: ([0-9.]+))?\\;version:\\1"
+    }
+  },
+  "Ghost": {
+    "domain": "cms",
+    "vendor": "Ghost",
+    "cats": ["CMS"],
+    "cpe": "cpe:2.3:a:ghost:ghost:*:*:*:*:*:*:*:*",
+    "implies": ["Node.js"],
+    "meta": {
+      "generator": "^Ghost(?: ([0-9.]+))?\\;version:\\1"
+    }
+  },
+  "Magento": {
+    "domain": "cms",
+    "vendor": "Adobe",
+    "cats": ["E-Commerce", "CMS"],
+    "cpe": "cpe:2.3:a:magento:magento:*:*:*:*:*:*:*:*",
+    "implies": ["PHP"],
+    "cookies": {
+      "frontend": ""
+    },
+    "scriptSrc": ["/static/frontend/"]
+  },
+  "Shopify": {
+    "domain": "cms",
+    "vendor": "Shopify",
+    "cats": ["E-Commerce", "CMS"],
+    "cpe": "cpe:2.3:a:shopify:shopify:*:*:*:*:*:*:*:*",
+    "headers": {
+      "X-ShopId": ""
+    },
+    "scriptSrc": ["cdn\\.shopify\\.com"]
+  },
+  "TYPO3": {
+    "domain": "cms",
+    "vendor": "TYPO3",
+    "cats": ["CMS"],
+    "cpe": "cpe:2.3:a:typo3:typo3:*:*:*:*:*:*:*:*",
+    "implies": ["PHP"],
+    "meta": {
+      "generator": "^TYPO3 (?:CMS|Inline)?(?: ([0-9.]+))?\\;version:\\1"
+    }
+  },
+  "Strapi": {
+    "domain": "cms",
+    "vendor": "Strapi",
+    "cats": ["Headless CMS"],
+    "cpe": "cpe:2.3:a:strapi:strapi:*:*:*:*:*:*:*:*",
+    "implies": ["Node.js"],
+    "headers": {
+      "X-Powered-By": "^Strapi"
+    }
+  }
+}

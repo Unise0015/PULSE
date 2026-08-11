@@ -1,0 +1,49 @@
+{
+  "Cloudflare": {
+    "domain": "cdn_waf",
+    "vendor": "Cloudflare",
+    "cats": ["CDN", "WAF"],
+    "cpe": "cpe:2.3:a:cloudflare:cloudflare:*:*:*:*:*:*:*:*",
+    "headers": {
+      "Server": "^cloudflare$",
+      "CF-RAY": ""
+    }
+  },
+  "Akamai": {
+    "domain": "cdn_waf",
+    "vendor": "Akamai",
+    "cats": ["CDN", "WAF"],
+    "cpe": "cpe:2.3:a:akamai:akamai:*:*:*:*:*:*:*:*",
+    "headers": {
+      "X-Akamai-Transformed": ""
+    }
+  },
+  "Fastly": {
+    "domain": "cdn_waf",
+    "vendor": "Fastly",
+    "cats": ["CDN"],
+    "cpe": "cpe:2.3:a:fastly:fastly:*:*:*:*:*:*:*:*",
+    "headers": {
+      "X-Fastly-Request-ID": ""
+    }
+  },
+  "Imperva Incapsula": {
+    "domain": "cdn_waf",
+    "vendor": "Imperva",
+    "cats": ["WAF"],
+    "cpe": "cpe:2.3:a:imperva:incapsula:*:*:*:*:*:*:*:*",
+    "headers": {
+      "X-Iinfo": "",
+      "X-CDN": "^Incapsula$"
+    }
+  },
+  "Sucuri": {
+    "domain": "cdn_waf",
+    "vendor": "Sucuri",
+    "cats": ["WAF"],
+    "cpe": "cpe:2.3:a:sucuri:sucuri_firewall:*:*:*:*:*:*:*:*",
+    "headers": {
+      "Server": "^Sucuri/Cloudproxy$"
+    }
+  }
+}
