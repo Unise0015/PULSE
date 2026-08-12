@@ -8,6 +8,7 @@ from pulse.ecosystems.registry import PluginRegistry
 from pulse.ecosystems.base import EcosystemPlugin, ECOSYSTEM_REGISTRY_MAP
 from pulse.ecosystems.ecosystems_client import EcosystemsClient
 from pulse.ecosystems.package_identity import get_known_identity
+from pulse.ecosystems.smart_detection import RegistryValidationResult
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,10 @@ ECOSYSTEMS_MS_TO_PULSE = {
     "alpine": "Alpine",
     "debian": "Debian"
 }
+
+# System/distro-level ecosystems that should be deprioritized
+# when an application-level identity hint exists.
+SYSTEM_ECOSYSTEMS = {"Alpine", "Debian", "Ubuntu", "RPM", "Arch", "Nix"}
 
 @dataclass
 class PackageCandidate:
@@ -80,66 +85,254 @@ class PackageResolutionResult:
 
 
 class PackageResolutionService:
+    """Resolves a package name + version to a PULSE ecosystem provider.
+    
+    Uses concurrent evidence from:
+      1. Local identity hints (data-driven canonical mappings)
+      2. ecosyste.ms API (cross-registry metadata)
+      3. Native registry APIs (npm, PyPI, crates.io, etc.)
+    
+    The resolved provider is the SAME provider used for vulnerability scanning,
+    preventing any provider/ecosystem mismatch.
+    """
+    
     def __init__(self):
         self.ecosystems_client = EcosystemsClient()
         self.providers = PluginRegistry.load()
         self._provider_map = {p.manifest.name: p for p in self.providers}
 
-    async def _check_native_provider(self, client: httpx.AsyncClient, provider: EcosystemPlugin, package_name: str, version: Optional[str]) -> Optional[PackageCandidate]:
+    # ── Real Registry Check Methods (reused from SmartEcosystemDetector) ──
+
+    async def _check_pypi(self, client: httpx.AsyncClient, name: str, version: Optional[str]) -> RegistryValidationResult:
         try:
-            res = await provider.validate_registry_async(client, package_name, version)
-            if res and res.package_exists:
-                return PackageCandidate(
-                    ecosystem=provider.manifest.name,
-                    registry_name=ECOSYSTEM_REGISTRY_MAP.get(provider.manifest.name, provider.manifest.ecosystem or provider.manifest.name),
-                    package_name=package_name,
-                    requested_version=version,
-                    package_exists=True,
-                    version_exists=res.version_exists,
-                    confidence=0,  # Will be scored later
-                    source="native_registry",
-                    latest_version=res.latest_available_version,
-                    provider=provider
-                )
+            resp = await client.get(f"https://pypi.org/pypi/{name}/json")
+            if resp.status_code == 404:
+                return RegistryValidationResult(False, False, None, False, 404)
+            if resp.status_code == 200:
+                data = resp.json()
+                latest = data.get("info", {}).get("version")
+                has_version = True
+                if version:
+                    has_version = version in data.get("releases", {})
+                return RegistryValidationResult(True, has_version, latest, False, 200)
+            return RegistryValidationResult(False, False, None, True, resp.status_code)
+        except Exception:
+            return RegistryValidationResult(False, False, None, True, None)
+
+    async def _check_npm(self, client: httpx.AsyncClient, name: str, version: Optional[str]) -> RegistryValidationResult:
+        try:
+            # npm registry is case-insensitive but prefers lowercase
+            resp = await client.get(f"https://registry.npmjs.org/{name.lower()}")
+            if resp.status_code == 404:
+                return RegistryValidationResult(False, False, None, False, 404)
+            if resp.status_code == 200:
+                data = resp.json()
+                latest = data.get("dist-tags", {}).get("latest")
+                has_version = True
+                if version:
+                    has_version = version in data.get("versions", {})
+                return RegistryValidationResult(True, has_version, latest, False, 200)
+            return RegistryValidationResult(False, False, None, True, resp.status_code)
+        except Exception:
+            return RegistryValidationResult(False, False, None, True, None)
+
+    async def _check_crates(self, client: httpx.AsyncClient, name: str, version: Optional[str]) -> RegistryValidationResult:
+        try:
+            resp = await client.get(f"https://crates.io/api/v1/crates/{name}")
+            if resp.status_code == 404:
+                return RegistryValidationResult(False, False, None, False, 404)
+            if resp.status_code == 200:
+                data = resp.json()
+                latest = data.get("crate", {}).get("max_version")
+                has_version = True
+                if version:
+                    has_version = any(v.get("num") == version for v in data.get("versions", []))
+                return RegistryValidationResult(True, has_version, latest, False, 200)
+            return RegistryValidationResult(False, False, None, True, resp.status_code)
+        except Exception:
+            return RegistryValidationResult(False, False, None, True, None)
+
+    async def _check_rubygems(self, client: httpx.AsyncClient, name: str, version: Optional[str]) -> RegistryValidationResult:
+        try:
+            resp = await client.get(f"https://rubygems.org/api/v1/gems/{name}.json")
+            if resp.status_code == 404:
+                return RegistryValidationResult(False, False, None, False, 404)
+            if resp.status_code == 200:
+                data = resp.json()
+                latest = data.get("version")
+                has_version = True
+                if version:
+                    v_resp = await client.get(f"https://rubygems.org/api/v1/versions/{name}.json")
+                    if v_resp.status_code == 200:
+                        has_version = any(v.get("number") == version for v in v_resp.json())
+                return RegistryValidationResult(True, has_version, latest, False, 200)
+            return RegistryValidationResult(False, False, None, True, resp.status_code)
+        except Exception:
+            return RegistryValidationResult(False, False, None, True, None)
+
+    async def _check_packagist(self, client: httpx.AsyncClient, name: str, version: Optional[str]) -> RegistryValidationResult:
+        try:
+            resp = await client.get(f"https://packagist.org/packages/{name}.json")
+            if resp.status_code == 404:
+                return RegistryValidationResult(False, False, None, False, 404)
+            if resp.status_code == 200:
+                data = resp.json()
+                versions = data.get("package", {}).get("versions", {})
+                latest = None
+                for v in versions.keys():
+                    if "dev" not in v and "alpha" not in v and "beta" not in v and "rc" not in v:
+                        latest = v.lstrip("v")
+                        break
+                has_version = True
+                if version:
+                    has_version = version in versions or f"v{version}" in versions
+                return RegistryValidationResult(True, has_version, latest, False, 200)
+            return RegistryValidationResult(False, False, None, True, resp.status_code)
+        except Exception:
+            return RegistryValidationResult(False, False, None, True, None)
+
+    async def _check_nuget(self, client: httpx.AsyncClient, name: str, version: Optional[str]) -> RegistryValidationResult:
+        try:
+            resp = await client.get(f"https://api.nuget.org/v3/registration5-gz-semver2/{name.lower()}/index.json")
+            if resp.status_code == 404:
+                return RegistryValidationResult(False, False, None, False, 404)
+            if resp.status_code == 200:
+                return RegistryValidationResult(True, True, None, False, 200)
+            return RegistryValidationResult(False, False, None, True, resp.status_code)
+        except Exception:
+            return RegistryValidationResult(False, False, None, True, None)
+
+    async def _check_maven(self, client: httpx.AsyncClient, name: str, version: Optional[str]) -> RegistryValidationResult:
+        try:
+            query = f"g:{name}"
+            if ":" in name:
+                g, a = name.split(":", 1)
+                query = f'g:"{g}" AND a:"{a}"'
+            resp = await client.get("https://search.maven.org/solrsearch/select", params={"q": query})
+            if resp.status_code == 200:
+                data = resp.json()
+                docs = data.get("response", {}).get("docs", [])
+                if data.get("response", {}).get("numFound", 0) > 0 and docs:
+                    latest = docs[0].get("latestVersion")
+                    return RegistryValidationResult(True, True, latest, False, 200)
+                return RegistryValidationResult(False, False, None, False, 404)
+            return RegistryValidationResult(False, False, None, True, resp.status_code)
+        except Exception:
+            return RegistryValidationResult(False, False, None, True, None)
+
+    async def _check_go(self, client: httpx.AsyncClient, name: str, version: Optional[str]) -> RegistryValidationResult:
+        try:
+            encoded = []
+            for char in name:
+                if char.isupper():
+                    encoded.append(f"!{char.lower()}")
+                else:
+                    encoded.append(char)
+            encoded_name = "".join(encoded)
+            resp = await client.get(f"https://proxy.golang.org/{encoded_name}/@v/list")
+            if resp.status_code in (404, 410):
+                return RegistryValidationResult(False, False, None, False, 404)
+            if resp.status_code == 200:
+                versions = resp.text.splitlines()
+                latest = versions[-1] if versions else None
+                has_version = True
+                if version:
+                    has_version = version in versions or f"v{version}" in versions
+                return RegistryValidationResult(True, has_version, latest, False, 200)
+            return RegistryValidationResult(False, False, None, True, resp.status_code)
+        except Exception:
+            return RegistryValidationResult(False, False, None, True, None)
+
+    # ── Provider Check Dispatcher ──
+
+    _REGISTRY_CHECK_MAP = {
+        "python": "_check_pypi",
+        "node.js": "_check_npm",
+        "rust": "_check_crates",
+        "go": "_check_go",
+        "ruby": "_check_rubygems",
+        "composer": "_check_packagist",
+        "nuget": "_check_nuget",
+        "maven": "_check_maven",
+    }
+
+    async def _check_native_provider(self, client: httpx.AsyncClient, provider: EcosystemPlugin, package_name: str, version: Optional[str]) -> Optional[PackageCandidate]:
+        """Check a single provider against its native registry."""
+        try:
+            eco_name = provider.manifest.name.lower()
+            
+            # Use the real registry check if available for original 9 ecosystems
+            check_method_name = self._REGISTRY_CHECK_MAP.get(eco_name)
+            if check_method_name:
+                check_method = getattr(self, check_method_name)
+                res = await check_method(client, package_name, version)
+            else:
+                # Fall back to the provider's own validate_registry_async
+                res = await provider.validate_registry_async(client, package_name, version)
+                
+            if res is None or not res.package_exists:
+                return None
+                
+            return PackageCandidate(
+                ecosystem=provider.manifest.name,
+                registry_name=ECOSYSTEM_REGISTRY_MAP.get(provider.manifest.name, provider.manifest.ecosystem or provider.manifest.name),
+                package_name=package_name,
+                requested_version=version,
+                package_exists=True,
+                version_exists=res.version_exists,
+                confidence=0,  # Will be scored later
+                source="native_registry",
+                latest_version=res.latest_available_version,
+                provider=provider
+            )
         except Exception as e:
             logger.debug(f"Native provider check failed for {provider.manifest.name}: {e}")
         return None
 
-    def _score_candidate(self, candidate: PackageCandidate, local_eco: str, is_ecosystems_ms: bool) -> PackageCandidate:
+    def _score_candidate(self, candidate: PackageCandidate, local_eco: Optional[str]) -> PackageCandidate:
+        """Score a candidate based on multiple evidence signals."""
         score = 0
         reasons = []
 
+        # Signal 1: Local identity hint match (+25)
         if local_eco and local_eco.lower() == candidate.ecosystem.lower():
             score += 25
-            reasons.append("Known local identity mapping")
+            reasons.append("Known identity mapping")
 
-        # Basic exact match points
+        # Signal 2: Package exists in registry (+20)
         score += 20
-        reasons.append("Exact name match")
+        reasons.append("Registry match")
 
+        # Signal 3: Version verification (+30 if exists, -25 if not)
         if candidate.requested_version:
             if candidate.version_exists:
                 score += 30
-                reasons.append("Exact version verified")
+                reasons.append("Version verified")
             else:
                 score -= 25
-                reasons.append("Requested version not found")
+                reasons.append("Version not found")
         else:
-            # If no version requested but package exists
             score += 20
-            
-        if is_ecosystems_ms:
+
+        # Signal 4: Source quality (+15)
+        if candidate.source == "ecosystems_ms":
             score += 15
-            reasons.append("ecosyste.ms confirmation")
+            reasons.append("ecosyste.ms confirmed")
         else:
             score += 15
-            reasons.append("Native registry confirmation")
+            reasons.append("Native registry confirmed")
 
+        # Signal 5: Rich metadata (+10)
         if candidate.description or candidate.repository_url:
             score += 10
-            reasons.append("Rich metadata present")
+            reasons.append("Rich metadata")
 
-        # Clamp score 0-100
+        # Signal 6: System-level ecosystem penalty (-20 when app-level hint exists)
+        if local_eco and candidate.ecosystem in SYSTEM_ECOSYSTEMS:
+            score -= 20
+            reasons.append("System ecosystem deprioritized")
+
+        # Clamp 0-100
         candidate.confidence = max(0, min(100, score))
         candidate.reason = ", ".join(reasons)
         return candidate
@@ -155,26 +348,22 @@ class PackageResolutionService:
 
         candidates: List[PackageCandidate] = []
         
-        # 1. ecosyste.ms search
+        # ── Evidence Source 1: ecosyste.ms search ──
         ecosystems_pkgs = await self.ecosystems_client.search_packages(package_name)
-        if not ecosystems_pkgs:
-            # Maybe network error if returned empty but not 404? We assume 404/empty.
-            # Client returns empty list on error too, but we can check if it's disabled.
-            pass
             
         for pkg in ecosystems_pkgs:
             if pkg.get("name", "").lower() == package_name.lower():
                 eco_key = pkg.get("registry", {}).get("ecosystem", "")
                 pulse_eco = ECOSYSTEMS_MS_TO_PULSE.get(eco_key)
                 
-                # If we don't have a mapping, we can still show it as a candidate if we want,
-                # but we prefer mapping it to a known pulse provider.
                 if pulse_eco and pulse_eco in self._provider_map:
                     provider = self._provider_map[pulse_eco]
                     
                     version_exists = False
                     if version:
-                        ver_data = await self.ecosystems_client.get_package_version(pkg.get("registry", {}).get("name", ""), package_name, version)
+                        ver_data = await self.ecosystems_client.get_package_version(
+                            pkg.get("registry", {}).get("name", ""), package_name, version
+                        )
                         version_exists = bool(ver_data)
                     
                     c = PackageCandidate(
@@ -193,9 +382,20 @@ class PackageResolutionService:
                     )
                     candidates.append(c)
 
-        # 2. Native Providers (if not already found by ecosyste.ms for that provider)
+        # ── Evidence Source 2: Native Registry Checks ──
         found_ecos = {c.ecosystem for c in candidates}
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        
+        async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
+            # If local identity hint exists and that ecosystem wasn't found by ecosyste.ms,
+            # ALWAYS check it first — this is the primary fix for the Bootstrap problem.
+            if local_eco and local_eco not in found_ecos and local_eco in self._provider_map:
+                hint_provider = self._provider_map[local_eco]
+                hint_candidate = await self._check_native_provider(client, hint_provider, package_name, version)
+                if hint_candidate:
+                    candidates.append(hint_candidate)
+                    found_ecos.add(local_eco)
+
+            # Check remaining providers
             native_tasks = []
             for provider in self.providers:
                 if provider.manifest.name not in found_ecos:
@@ -207,13 +407,13 @@ class PackageResolutionService:
                     if nr:
                         candidates.append(nr)
 
-        # 3. Score Candidates
+        # ── Score All Candidates ──
         for c in candidates:
-            self._score_candidate(c, local_eco, c.source == "ecosystems_ms")
+            self._score_candidate(c, local_eco)
 
         candidates.sort(key=lambda x: x.confidence, reverse=True)
 
-        # Filter out extremely low confidence unless it's the only one
+        # Filter out low confidence
         good_candidates = [c for c in candidates if c.confidence >= 50]
         if not good_candidates and candidates:
             good_candidates = [candidates[0]]
@@ -226,14 +426,13 @@ class PackageResolutionService:
 
         best = good_candidates[0]
         
-        # Determine auto-resolution
+        # ── Auto-Resolution Decision ──
         is_clearly_ahead = True
         if len(good_candidates) > 1:
             second_best = good_candidates[1]
             if best.confidence - second_best.confidence < 15:
                 is_clearly_ahead = False
                 
-        # Also auto-resolve if local identity is strong
         strong_local = (local_eco and local_eco.lower() == best.ecosystem.lower())
 
         if (best.confidence >= 60 and is_clearly_ahead) or strong_local or len(good_candidates) == 1:
@@ -253,3 +452,4 @@ class PackageResolutionService:
             result.resolution_reason = "Ambiguous package identity or missing version."
 
         return result
+
