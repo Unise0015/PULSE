@@ -73,7 +73,7 @@ class EcosystemsClient:
         except sqlite3.Error:
             pass
 
-    async def _request(self, endpoint: str, cache_key: str) -> Tuple[Optional[Any], int]:
+    async def _request(self, endpoint: str, cache_key: str) -> tuple[Optional[Any], int]:
         """Perform HTTP GET request with retries and backoff."""
         if not self.enabled:
             return None, 0
