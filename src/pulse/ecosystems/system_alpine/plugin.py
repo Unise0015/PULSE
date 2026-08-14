@@ -98,7 +98,14 @@ class SystemAlpinePlugin(EcosystemPlugin):
             if resp.status_code == 404:
                 return RegistryValidationResult(False, False, None, False, 404)
             if resp.status_code == 200:
-                return RegistryValidationResult(True, True, None, False, 200)
+                if "No matching packages found" in resp.text or "<h3>No packages found</h3>" in resp.text:
+                    return RegistryValidationResult(False, False, None, False, 404)
+                if f'aria-label="{name}"' not in resp.text and f"/{name}</a>" not in resp.text and f">{name}</a>" not in resp.text:
+                    return RegistryValidationResult(False, False, None, False, 404)
+                has_version = True
+                if version:
+                    has_version = (version in resp.text)
+                return RegistryValidationResult(True, has_version, None, False, 200)
             return RegistryValidationResult(False, False, None, True, resp.status_code)
         except Exception:
             return RegistryValidationResult(False, False, None, True, None)

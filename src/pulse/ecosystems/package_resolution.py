@@ -197,7 +197,23 @@ class PackageResolutionService:
             if resp.status_code == 404:
                 return RegistryValidationResult(False, False, None, False, 404)
             if resp.status_code == 200:
-                return RegistryValidationResult(True, True, None, False, 200)
+                data = resp.json()
+                items = data.get("items", [])
+                has_version = True
+                latest = None
+                if items:
+                    latest = items[-1].get("upper")
+                if version:
+                    has_version = False
+                    for page in items:
+                        for entry in page.get("items", []):
+                            entry_cat = entry.get("catalogEntry", {})
+                            if entry_cat.get("version", "").lower() == version.lower():
+                                has_version = True
+                                break
+                        if has_version:
+                            break
+                return RegistryValidationResult(True, has_version, latest, False, 200)
             return RegistryValidationResult(False, False, None, True, resp.status_code)
         except Exception:
             return RegistryValidationResult(False, False, None, True, None)
