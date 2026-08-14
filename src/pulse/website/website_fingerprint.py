@@ -206,7 +206,7 @@ class WebsiteFingerprintAnalyzer:
         # 2.5 Declarative Signature Engine Execution (3000+ JSON Signatures)
         try:
             decl_engine = get_declarative_engine()
-            decl_fingerprints = decl_engine.analyze(
+            decl_fingerprints = decl_engine.detect(
                 url=url,
                 headers=response_headers,
                 cookies=cookies,

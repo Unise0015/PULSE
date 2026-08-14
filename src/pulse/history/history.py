@@ -15,191 +15,198 @@ class HistoryService:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             
-            import json
-            recs_json = None
-            if hasattr(scan, "_recommendations") and scan._recommendations:
-                try:
-                    recs_dict = {}
-                    for pkg_name, rec in scan._recommendations.items():
-                        recs_dict[pkg_name] = {
-                            "recommended_version": rec.recommended_version,
-                            "latest_stable": rec.latest_stable,
-                            "verification_status": getattr(rec, "verification_status", "VERIFIED" if rec.verified_safe else "UNVERIFIED"),
-                            "verification_confidence": str(rec.confidence.value if hasattr(rec.confidence, "value") else rec.confidence),
-                            "migration_risk": str(rec.migration_risk.value if hasattr(rec.migration_risk, "value") else rec.migration_risk),
-                            "upgrade_command": rec.upgrade_command,
-                            "recommendation_reason": rec.recommendation_reason
-                        }
-                    recs_json = json.dumps(recs_dict)
-                except Exception:
-                    pass
-
-            # Save the run
-            cursor.execute('''
-                INSERT INTO scan_runs (
-                    timestamp, hostname, tool_version, attack_surface_score,
-                    scan_duration_seconds, packages_scanned, vulnerabilities_found, kev_matches,
-                    target_type, target_id, target_fingerprint, report_dir, recommendations_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                scan.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
-                scan.hostname,
-                scan.tool_version,
-                scan.attack_surface_score,
-                scan.scan_duration_seconds,
-                scan.packages_scanned,
-                len(scan.findings),
-                scan.kev_matches,
-                scan.target_type,
-                scan.target_id,
-                scan.target_fingerprint,
-                report_dir,
-                recs_json
-            ))
-            scan_run_id = cursor.lastrowid
-            
-            # Save the findings
-            from pulse.domain.models import FindingSourceType, deduplicate_and_merge_findings
-            unique_findings = deduplicate_and_merge_findings(scan.findings)
-            scan.findings = unique_findings
-            for finding in unique_findings:
-                if finding.source_type == FindingSourceType.WEBSITE:
-                    continue # Do not store website findings in cve_events
-                    
-                intel = finding.exploit_intelligence
-                public_poc_val = 1 if (intel and intel.public_poc) else 0
-                poc_source_val = intel.poc_source if intel else None
-                exploit_maturity_val = intel.exploit_maturity if intel else "Unknown"
-                threat_level_val = "Low"
-
-                cursor.execute('''
-                    INSERT INTO cve_events (
-                        scan_run_id, cve_id, package, status, risk_score,
-                        cvss_score, cvss_severity, epss_score, epss_percent,
-                        latest_version, description, kev_match,
-                        cwe, cvss_vector, nvd_url,
-                        public_poc, poc_source, exploit_maturity, threat_level
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (
-                    scan_run_id,
-                    finding.cve_id,
-                    f"{finding.package.ecosystem}:{finding.package.name}@{finding.package.version}",
-                    "new", # Will be refined later if needed
-                    finding.risk_heat_score,
-                    finding.cvss_score,
-                    finding.cvss_severity,
-                    finding.epss_score,
-                    finding.epss_percent,
-                    finding.package.latest_version or "",
-                    finding.description or "",
-                    1 if finding.kev_match else 0,
-                    finding.cwe or "",
-                    finding.cvss_vector or "",
-                    finding.nvd_url or "",
-                    public_poc_val,
-                    poc_source_val,
-                    exploit_maturity_val,
-                    threat_level_val
-                ))
-            
-            # Save the website technologies if available
-            if hasattr(scan, "website_assessment") and scan.website_assessment and scan.website_assessment.technologies:
-                import hashlib
-                import json
-                
-                for tech in scan.website_assessment.technologies:
-                    # Generate keys using normalized catalog name
-                    norm_key = tech.name.lower()
-                    tech_key = hashlib.sha256(f"{norm_key}:{tech.category.value.lower() if hasattr(tech.category, 'value') else str(tech.category).lower()}".encode("utf-8")).hexdigest()
-                    version_str = tech.version if tech.version else ""
-                    fingerprint_hash = hashlib.sha256(f"{norm_key}:{version_str.lower()}:{tech.category.value.lower() if hasattr(tech.category, 'value') else str(tech.category).lower()}".encode("utf-8")).hexdigest()
-                    
-                    # Lifecycle tracking: check previous scans for the first_seen scan run ID
-                    cursor.execute('''
-                        SELECT first_seen_scan_id
-                        FROM scan_technologies
-                        WHERE fingerprint_hash = ?
-                        ORDER BY scan_run_id DESC LIMIT 1
-                    ''', (fingerprint_hash,))
-                    row = cursor.fetchone()
-                    
-                    if row:
-                        first_seen_scan_id = row[0]
-                    else:
-                        first_seen_scan_id = scan_run_id
-                    last_seen_scan_id = scan_run_id
-                    
-                    # Truncate evidence (max 10 items, max 500 chars value/description)
-                    truncated_ev_list = []
-                    for ev in tech.evidence[:10]:
-                        truncated_ev_list.append({
-                            "method": ev.method.value if hasattr(ev.method, "value") else ev.method,
-                            "source": ev.source,
-                            "value": ev.value[:500] if ev.value else "",
-                            "confidence": ev.confidence,
-                            "description": ev.description[:500] if ev.description else "",
-                            "reliability": ev.reliability.value if hasattr(ev.reliability, "value") else ev.reliability
-                        })
-                    evidence_json = json.dumps(truncated_ev_list)
-                    
-                    # Truncate version evidence
-                    version_evidence_json = None
-                    if tech.version_evidence:
-                        v_ev = tech.version_evidence
-                        version_evidence_json = json.dumps({
-                            "method": v_ev.method.value if hasattr(v_ev.method, "value") else v_ev.method,
-                            "source": v_ev.source,
-                            "value": v_ev.value[:500] if v_ev.value else "",
-                            "confidence": v_ev.confidence,
-                            "description": v_ev.description[:500] if v_ev.description else "",
-                            "reliability": v_ev.reliability.value if hasattr(v_ev.reliability, "value") else v_ev.reliability
-                        })
-                        
-                    # Children and CPE Candidates serialization
-                    children_json = json.dumps(tech.children)
-                    cpe_candidates_json = json.dumps([{"cpe": c.cpe, "confidence": c.confidence} for c in tech.cpe_candidates])
-                    
-                    cursor.execute('''
-                        INSERT INTO scan_technologies (
-                            scan_run_id, name, version, category, confidence, confidence_band,
-                            evidence_count, raw_match_count, version_status, evidence_json,
-                            version_evidence_json, version_confidence, signature_id, signature_version,
-                            parent, children_json, cpe_candidates_json, ecosystem,
-                            correlation_supported, detection_mode, technology_key, fingerprint_hash,
-                            first_seen_scan_id, last_seen_scan_id, schema_version
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', (
-                        scan_run_id,
-                        norm_key,
-                        tech.version,
-                        tech.category.value if hasattr(tech.category, 'value') else str(tech.category),
-                        tech.confidence,
-                        tech.confidence_band.value if hasattr(tech.confidence_band, 'value') else str(tech.confidence_band),
-                        len(truncated_ev_list),
-                        tech.raw_match_count,
-                        tech.version_status.value if hasattr(tech.version_status, 'value') else str(tech.version_status),
-                        evidence_json,
-                        version_evidence_json,
-                        tech.version_confidence,
-                        tech.signature_id,
-                        tech.signature_version,
-                        tech.parent,
-                        children_json,
-                        cpe_candidates_json,
-                        tech.ecosystem,
-                        1 if tech.correlation_supported else 0,
-                        tech.detection_mode.value if hasattr(tech.detection_mode, 'value') else str(tech.detection_mode),
-                        tech_key,
-                        fingerprint_hash,
-                        first_seen_scan_id,
-                        last_seen_scan_id,
-                        "1.0"
-                    ))
+            recs_json = self._serialize_recommendations(scan)
+            scan_run_id = self._save_scan_metadata(cursor, scan, report_dir, recs_json)
+            self._save_findings(cursor, scan, scan_run_id)
+            self._save_inventory(cursor, scan, scan_run_id)
             
             conn.commit()
 
         self.cleanup_if_needed()
         return scan_run_id
+
+    def _serialize_recommendations(self, scan: ScanResult) -> Optional[str]:
+        import json
+        if not hasattr(scan, "_recommendations") or not scan._recommendations:
+            return None
+        try:
+            recs_dict = {}
+            for pkg_name, rec in scan._recommendations.items():
+                recs_dict[pkg_name] = {
+                    "recommended_version": rec.recommended_version,
+                    "latest_stable": rec.latest_stable,
+                    "verification_status": getattr(rec, "verification_status", "VERIFIED" if rec.verified_safe else "UNVERIFIED"),
+                    "verification_confidence": str(rec.confidence.value if hasattr(rec.confidence, "value") else rec.confidence),
+                    "migration_risk": str(rec.migration_risk.value if hasattr(rec.migration_risk, "value") else rec.migration_risk),
+                    "upgrade_command": rec.upgrade_command,
+                    "recommendation_reason": rec.recommendation_reason
+                }
+            return json.dumps(recs_dict)
+        except Exception:
+            return None
+
+    def _save_scan_metadata(self, cursor, scan: ScanResult, report_dir: Optional[str], recs_json: Optional[str]) -> int:
+        cursor.execute('''
+            INSERT INTO scan_runs (
+                timestamp, hostname, tool_version, attack_surface_score,
+                scan_duration_seconds, packages_scanned, vulnerabilities_found, kev_matches,
+                target_type, target_id, target_fingerprint, report_dir, recommendations_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            scan.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+            scan.hostname,
+            scan.tool_version,
+            scan.attack_surface_score,
+            scan.scan_duration_seconds,
+            scan.packages_scanned,
+            len(scan.findings),
+            scan.kev_matches,
+            scan.target_type,
+            scan.target_id,
+            scan.target_fingerprint,
+            report_dir,
+            recs_json
+        ))
+        return cursor.lastrowid
+
+    def _save_findings(self, cursor, scan: ScanResult, scan_run_id: int):
+        from pulse.domain.models import FindingSourceType, deduplicate_and_merge_findings
+        unique_findings = deduplicate_and_merge_findings(scan.findings)
+        scan.findings = unique_findings
+        for finding in unique_findings:
+            if finding.source_type == FindingSourceType.WEBSITE:
+                continue # Do not store website findings in cve_events
+                
+            intel = finding.exploit_intelligence
+            public_poc_val = 1 if (intel and intel.public_poc) else 0
+            poc_source_val = intel.poc_source if intel else None
+            exploit_maturity_val = intel.exploit_maturity if intel else "Unknown"
+            threat_level_val = "Low"
+
+            cursor.execute('''
+                INSERT INTO cve_events (
+                    scan_run_id, cve_id, package, status, risk_score,
+                    cvss_score, cvss_severity, epss_score, epss_percent,
+                    latest_version, description, kev_match,
+                    cwe, cvss_vector, nvd_url,
+                    public_poc, poc_source, exploit_maturity, threat_level
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                scan_run_id,
+                finding.cve_id,
+                f"{finding.package.ecosystem}:{finding.package.name}@{finding.package.version}",
+                "new", # Will be refined later if needed
+                finding.risk_heat_score,
+                finding.cvss_score,
+                finding.cvss_severity,
+                finding.epss_score,
+                finding.epss_percent,
+                finding.package.latest_version or "",
+                finding.description or "",
+                1 if finding.kev_match else 0,
+                finding.cwe or "",
+                finding.cvss_vector or "",
+                finding.nvd_url or "",
+                public_poc_val,
+                poc_source_val,
+                exploit_maturity_val,
+                threat_level_val
+            ))
+
+    def _save_inventory(self, cursor, scan: ScanResult, scan_run_id: int):
+        if not hasattr(scan, "website_assessment") or not scan.website_assessment or not scan.website_assessment.technologies:
+            return
+            
+        import hashlib
+        import json
+        for tech in scan.website_assessment.technologies:
+            # Generate keys using normalized catalog name
+            norm_key = tech.name.lower()
+            tech_key = hashlib.sha256(f"{norm_key}:{tech.category.value.lower() if hasattr(tech.category, 'value') else str(tech.category).lower()}".encode("utf-8")).hexdigest()
+            version_str = tech.version if tech.version else ""
+            fingerprint_hash = hashlib.sha256(f"{norm_key}:{version_str.lower()}:{tech.category.value.lower() if hasattr(tech.category, 'value') else str(tech.category).lower()}".encode("utf-8")).hexdigest()
+            
+            # Lifecycle tracking: check previous scans for the first_seen scan run ID
+            cursor.execute('''
+                SELECT first_seen_scan_id
+                FROM scan_technologies
+                WHERE fingerprint_hash = ?
+                ORDER BY scan_run_id DESC LIMIT 1
+            ''', (fingerprint_hash,))
+            row = cursor.fetchone()
+            
+            if row:
+                first_seen_scan_id = row[0]
+            else:
+                first_seen_scan_id = scan_run_id
+            last_seen_scan_id = scan_run_id
+            
+            # Truncate evidence (max 10 items, max 500 chars value/description)
+            truncated_ev_list = []
+            for ev in tech.evidence[:10]:
+                truncated_ev_list.append({
+                    "method": ev.method.value if hasattr(ev.method, "value") else ev.method,
+                    "source": ev.source,
+                    "value": ev.value[:500] if ev.value else "",
+                    "confidence": ev.confidence,
+                    "description": ev.description[:500] if ev.description else "",
+                    "reliability": ev.reliability.value if hasattr(ev.reliability, "value") else ev.reliability
+                })
+            evidence_json = json.dumps(truncated_ev_list)
+            
+            # Truncate version evidence
+            version_evidence_json = None
+            if tech.version_evidence:
+                v_ev = tech.version_evidence
+                version_evidence_json = json.dumps({
+                    "method": v_ev.method.value if hasattr(v_ev.method, "value") else v_ev.method,
+                    "source": v_ev.source,
+                    "value": v_ev.value[:500] if v_ev.value else "",
+                    "confidence": v_ev.confidence,
+                    "description": v_ev.description[:500] if v_ev.description else "",
+                    "reliability": v_ev.reliability.value if hasattr(v_ev.reliability, "value") else v_ev.reliability
+                })
+                
+            # Children and CPE Candidates serialization
+            children_json = json.dumps(tech.children)
+            cpe_candidates_json = json.dumps([{"cpe": c.cpe, "confidence": c.confidence} for c in tech.cpe_candidates])
+            
+            cursor.execute('''
+                INSERT INTO scan_technologies (
+                    scan_run_id, name, version, category, confidence, confidence_band,
+                    evidence_count, raw_match_count, version_status, evidence_json,
+                    version_evidence_json, version_confidence, signature_id, signature_version,
+                    parent, children_json, cpe_candidates_json, ecosystem,
+                    correlation_supported, detection_mode, technology_key, fingerprint_hash,
+                    first_seen_scan_id, last_seen_scan_id, schema_version
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                scan_run_id,
+                norm_key,
+                tech.version,
+                tech.category.value if hasattr(tech.category, 'value') else str(tech.category),
+                tech.confidence,
+                tech.confidence_band.value if hasattr(tech.confidence_band, 'value') else str(tech.confidence_band),
+                len(truncated_ev_list),
+                tech.raw_match_count,
+                tech.version_status.value if hasattr(tech.version_status, 'value') else str(tech.version_status),
+                evidence_json,
+                version_evidence_json,
+                tech.version_confidence,
+                tech.signature_id,
+                tech.signature_version,
+                tech.parent,
+                children_json,
+                cpe_candidates_json,
+                tech.ecosystem,
+                1 if tech.correlation_supported else 0,
+                tech.detection_mode.value if hasattr(tech.detection_mode, 'value') else str(tech.detection_mode),
+                tech_key,
+                fingerprint_hash,
+                first_seen_scan_id,
+                last_seen_scan_id,
+                "1.0"
+            ))
 
     def get_posture_delta(self, current_scan: ScanResult) -> Optional[PostureDelta]:
         """Calculates the delta between the last scan in DB and the current_scan."""

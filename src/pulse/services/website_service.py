@@ -68,8 +68,8 @@ class WebsiteService:
         from pulse.website.technology_resolver import resolve_technology
         from pulse.website.version_resolver import resolve_version, VersionResolutionStatus
         from pulse.website.lookup_strategy import determine_lookup_strategy, LookupStrategyType
-        from pulse.website.cve_mapper import get_cpe_candidate, get_osv_package_for_tech
-        from pulse.website.confidence_correlation import should_correlate
+        
+        
         from pulse.website.scoring import get_confidence_multiplier, calculate_adjusted_risk
         from pulse.website.remediation import get_upgrade_recommendation
         from pulse.enrichment.nvd.correlator import NVDCorrelationEngine
