@@ -872,26 +872,30 @@ def help_menu():
     console.print("  • Export Report: Save findings to HTML, JSON, CSV, or Markdown")
 
 def startup_health_check():
+    from pulse.banner import UNICODE_SUPPORTED
+    ok_char = "✓" if UNICODE_SUPPORTED else "+"
+    fail_char = "✗" if UNICODE_SUPPORTED else "x"
+    
     console.print("\n[bold]System Status[/bold]")
     
     # Check NVD Key
     if get_setting("NVD_API_KEY"):
-        console.print("  NVD API Key      [green]✓ Configured[/green]")
+        console.print(f"  NVD API Key      [green]{ok_char} Configured[/green]")
     else:
-        console.print("  NVD API Key      [red]✗ Not Configured[/red]")
+        console.print(f"  NVD API Key      [red]{fail_char} Not Configured[/red]")
         
     # Check Cache DB (assumed local)
-    console.print("  Cache Database   [green]✓ Connected[/green]")
+    console.print(f"  Cache Database   [green]{ok_char} Connected[/green]")
     
     # Check History DB (assumed local)
-    console.print("  History DB       [green]✓ Connected[/green]")
+    console.print(f"  History DB       [green]{ok_char} Connected[/green]")
     
     # Check Internet
     try:
         socket.create_connection(("1.1.1.1", 53), timeout=2)
-        console.print("  Internet Access  [green]✓ Available[/green]")
+        console.print(f"  Internet Access  [green]{ok_char} Available[/green]")
     except OSError:
-        console.print("  Internet Access  [red]✗ Offline[/red]")
+        console.print(f"  Internet Access  [red]{fail_char} Offline[/red]")
         
     console.print()
 
@@ -1159,6 +1163,12 @@ def main():
     from pulse.state import AppState, SummaryMode
     from pulse.core.logging_config import setup_logging, set_scan_correlation_id
     
+    if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(encoding='utf-8')
+        except Exception:
+            pass
+            
     setup_logging(debug=args.debug)
     set_scan_correlation_id()
     

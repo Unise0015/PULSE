@@ -193,11 +193,17 @@ class PackageResolutionService:
 
     async def _check_nuget(self, client: httpx.AsyncClient, name: str, version: Optional[str]) -> RegistryValidationResult:
         try:
-            resp = await client.get(f"https://api.nuget.org/v3/registration5-gz-semver2/{name.lower()}/index.json")
+            resp = await client.get(f"https://api.nuget.org/v3-flatcontainer/{name.lower()}/index.json")
             if resp.status_code == 404:
                 return RegistryValidationResult(False, False, None, False, 404)
             if resp.status_code == 200:
-                return RegistryValidationResult(True, True, None, False, 200)
+                data = resp.json()
+                versions = data.get("versions", [])
+                latest = versions[-1] if versions else None
+                has_version = True
+                if version:
+                    has_version = version in versions
+                return RegistryValidationResult(True, has_version, latest, False, 200)
             return RegistryValidationResult(False, False, None, True, resp.status_code)
         except Exception:
             return RegistryValidationResult(False, False, None, True, None)

@@ -99,9 +99,14 @@ class SystemDebianPlugin(EcosystemPlugin):
                 return RegistryValidationResult(False, False, None, False, 404)
             if resp.status_code == 200:
                 data = resp.json()
+                if data.get("error"):
+                    return RegistryValidationResult(False, False, None, False, 404)
                 versions = data.get("versions", [])
                 latest = versions[0].get("version") if versions else None
-                return RegistryValidationResult(True, True, latest, False, 200)
+                has_version = True
+                if version:
+                    has_version = any(v.get("version") == version for v in versions)
+                return RegistryValidationResult(True, has_version, latest, False, 200)
             return RegistryValidationResult(False, False, None, True, resp.status_code)
         except Exception:
             return RegistryValidationResult(False, False, None, True, None)

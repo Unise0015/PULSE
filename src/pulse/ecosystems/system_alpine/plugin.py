@@ -95,10 +95,13 @@ class SystemAlpinePlugin(EcosystemPlugin):
         from pulse.ecosystems.smart_detection import RegistryValidationResult
         try:
             resp = await client.get(f"https://pkgs.alpinelinux.org/packages?name={name}&branch=edge")
-            if resp.status_code == 404:
-                return RegistryValidationResult(False, False, None, False, 404)
             if resp.status_code == 200:
-                return RegistryValidationResult(True, True, None, False, 200)
+                if "No matching packages found" in resp.text:
+                    return RegistryValidationResult(False, False, None, False, 404)
+                has_version = True
+                if version and version not in resp.text:
+                    has_version = False
+                return RegistryValidationResult(True, has_version, None, False, 200)
             return RegistryValidationResult(False, False, None, True, resp.status_code)
         except Exception:
             return RegistryValidationResult(False, False, None, True, None)
