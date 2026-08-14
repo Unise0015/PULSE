@@ -1,7 +1,7 @@
 import logging
 import json
 import sqlite3
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 from datetime import datetime, timedelta
 import httpx
 import asyncio
