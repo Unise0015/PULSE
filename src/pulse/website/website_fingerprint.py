@@ -215,8 +215,9 @@ class WebsiteFingerprintAnalyzer:
             )
             for dfp in decl_fingerprints:
                 cpe_cands = []
-                if dfp.cpe:
-                    cpe_cands.append(CPECandidate(cpe=dfp.cpe, confidence=dfp.confidence))
+                cpe_val = getattr(dfp, "cpe", None)
+                if cpe_val:
+                    cpe_cands.append(CPECandidate(cpe=cpe_val, confidence=dfp.confidence))
                 dfp.cpe_candidates = cpe_cands
                 dfp.confidence_band = get_confidence_band(dfp.confidence)
                 detected_fingerprints.append(dfp)
@@ -231,8 +232,9 @@ class WebsiteFingerprintAnalyzer:
                 if fav_resp.status_code == 200 and fav_resp.content:
                     fav_fp = FaviconFingerprinter.identify(fav_resp.content)
                     if fav_fp:
-                        if fav_fp.cpe:
-                            fav_fp.cpe_candidates = [CPECandidate(cpe=fav_fp.cpe, confidence=100)]
+                        fav_cpe = getattr(fav_fp, "cpe", None)
+                        if fav_cpe:
+                            fav_fp.cpe_candidates = [CPECandidate(cpe=fav_cpe, confidence=100)]
                         fav_fp.confidence_band = get_confidence_band(100)
                         detected_fingerprints.append(fav_fp)
         except Exception:
