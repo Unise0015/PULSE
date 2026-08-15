@@ -998,30 +998,38 @@ def print_website_assessment_summary(console, scan: ScanResult):
     else:
         elig_values = [evaluate_correlation_eligibility(t) for t in wa.technologies]
     
-    count_correlatable = sum(1 for e in elig_values if e.status == CorrelationEligibilityStatus.CORRELATABLE)
-    count_partial = sum(1 for e in elig_values if e.status == CorrelationEligibilityStatus.PARTIALLY_CORRELATABLE)
+    count_correlatable = sum(1 for e in elig_values if e.status in (CorrelationEligibilityStatus.CORRELATABLE, CorrelationEligibilityStatus.PARTIALLY_CORRELATABLE))
     count_version_req = sum(1 for e in elig_values if e.status == CorrelationEligibilityStatus.VERSION_REQUIRED)
     count_detection = sum(1 for e in elig_values if e.status == CorrelationEligibilityStatus.DETECTION_ONLY)
-    count_intel_na = sum(1 for e in elig_values if e.status in (
+    count_unavail = sum(1 for e in elig_values if e.status in (
+        CorrelationEligibilityStatus.CORRELATION_UNAVAILABLE,
         CorrelationEligibilityStatus.INTELLIGENCE_UNAVAILABLE,
         CorrelationEligibilityStatus.RESOLUTION_FAILED,
         CorrelationEligibilityStatus.CONFIDENCE_TOO_LOW,
     ))
     
-    text.append("Coverage\n")
-    text.append(f" • Correlatable: {count_correlatable}\n")
-    if count_partial > 0:
-        text.append(f" • Partial: {count_partial}\n")
+    text.append("Correlation\n")
+    text.append(f" • Correlated: {count_correlatable}\n")
     if count_version_req > 0:
         text.append(f" • Version Required: {count_version_req}\n")
     if count_detection > 0:
         text.append(f" • Detection Only: {count_detection}\n")
-    if count_intel_na > 0:
-        text.append(f" • Intelligence N/A: {count_intel_na}\n")
+    if count_unavail > 0:
+        text.append(f" • Correlation Unavailable: {count_unavail}\n")
     text.append("\n")
     
-    status_val = wa.correlation_status.value if hasattr(wa.correlation_status, "value") else str(wa.correlation_status)
-    text.append(f"Vulnerability Correlation:\n • {status_val}")
+    is_correlated = wa.correlation_status in (CorrelationStatus.COMPLETED, CorrelationStatus.PARTIAL)
+    if is_correlated:
+        total_vulns = len(getattr(scan, "findings", []))
+        text.append("Vulnerability Intelligence\n")
+        text.append(f" • Technologies Correlated: {wa.correlated_technologies}\n")
+        text.append(f" • Vulnerabilities Found: {total_vulns}\n")
+        if total_vulns > 0:
+            highest_risk_finding = max(scan.findings, key=lambda f: f.risk_heat_score)
+            text.append(f" • Highest Risk: {highest_risk_finding.package.name} {highest_risk_finding.package.version}\n")
+    else:
+        status_val = wa.correlation_status.value if hasattr(wa.correlation_status, "value") else str(wa.correlation_status)
+        text.append(f"Vulnerability Correlation:\n • {status_val}")
     
     console.print(Panel(
         "".join(text),
@@ -1030,10 +1038,6 @@ def print_website_assessment_summary(console, scan: ScanResult):
         box=box.SQUARE,
         expand=False
     ))
-    
-    # Print the correlation summary as well if it has been run!
-    if wa.correlation_status in (CorrelationStatus.COMPLETED, CorrelationStatus.PARTIAL):
-        print_website_correlation_summary(console, scan)
 
 
 def print_technologies_view(console, scan: ScanResult):
@@ -1065,10 +1069,11 @@ def print_technologies_view(console, scan: ScanResult):
     else:
         table.add_column("CVEs", justify="center", style="bold magenta")
         table.add_column("Risk", justify="center", style="bold red")
-        table.add_column("Coverage", justify="center")
+        table.add_column("Status", justify="center")
         
     from pulse.website.capability import CorrelationEligibilityStatus, evaluate_correlation_eligibility
     eligibilities = getattr(wa, 'technology_eligibilities', {})
+    corr_results = getattr(wa, 'technology_correlation_results', {})
     
     for t in sorted(wa.technologies, key=lambda x: x.confidence, reverse=True):
         # Resolve display name
@@ -1104,20 +1109,25 @@ def print_technologies_view(console, scan: ScanResult):
                 coverage_str
             )
         else:
-            # Mapped findings
-            tech_findings = [
+            # Get structured correlation result
+            c_res = corr_results.get(t.name)
+            tech_findings = c_res.vulnerabilities if c_res else [
                 f for f in getattr(scan, "findings", [])
                 if getattr(f, "source_type", None) == FindingSourceType.WEBSITE
-                and getattr(f, "source_asset", None).lower() == tech_key
+                and getattr(f, "source_asset", "").lower() == t.name.lower()
             ]
             cve_count = len(tech_findings)
             
-            # Risk string mapping to CVSS severity name
-            if cve_count > 0:
+            if c_res:
+                corr_stat = c_res.correlation_status
+            else:
+                corr_stat = "VULNERABILITIES_FOUND" if cve_count > 0 else ("NO_KNOWN_VULNERABILITIES" if elig.is_eligible and elig.version_available else elig.status.value)
+
+            if corr_stat == "VULNERABILITIES_FOUND":
+                cve_display = str(cve_count)
                 severity_order = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
                 highest_finding = max(tech_findings, key=lambda f: severity_order.get(f.cvss_severity.value.upper() if hasattr(f.cvss_severity, "value") else f.cvss_severity.upper(), 0))
                 sev_name = highest_finding.cvss_severity.value.capitalize() if hasattr(highest_finding.cvss_severity, "value") else highest_finding.cvss_severity.capitalize()
-                
                 sev_color = {
                     "CRITICAL": "bold red",
                     "HIGH": "bold dark_orange",
@@ -1125,16 +1135,31 @@ def print_technologies_view(console, scan: ScanResult):
                     "LOW": "bold green"
                 }.get(highest_finding.cvss_severity.value.upper() if hasattr(highest_finding.cvss_severity, "value") else highest_finding.cvss_severity.upper(), "white")
                 risk_display = f"[{sev_color}]{sev_name}[/{sev_color}]"
-            else:
+                status_display = "[bold red]Vulnerable[/bold red]"
+            elif corr_stat == "NO_KNOWN_VULNERABILITIES":
+                cve_display = "0"
+                risk_display = "[green]None[/green]"
+                status_display = "[bold green]Clean[/bold green]"
+            elif corr_stat == "VERSION_REQUIRED":
+                cve_display = "-"
                 risk_display = "N/A"
+                status_display = "[yellow]Version Req[/yellow]"
+            elif corr_stat == "DETECTION_ONLY":
+                cve_display = "-"
+                risk_display = "N/A"
+                status_display = "[dim]Detection Only[/dim]"
+            else:
+                cve_display = "-"
+                risk_display = "N/A"
+                status_display = "[red]Unavailable[/red]"
                 
             table.add_row(
                 display_name,
                 version_str,
                 t.category.value if hasattr(t.category, 'value') else str(t.category),
-                str(cve_count) if cve_count > 0 else "-",
+                cve_display,
                 risk_display,
-                coverage_str
+                status_display
             )
             
     console.print(table)

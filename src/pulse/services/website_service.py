@@ -1,21 +1,32 @@
 import time
 import platform
 import hashlib
+import logging
 from datetime import datetime
+from typing import List, Dict, Tuple, Optional, Any
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from pulse.domain.models import ScanResult, VulnerabilityFinding, PackageInfo
+from pulse.domain.models import (
+    ScanResult, VulnerabilityFinding, PackageInfo, FindingSourceType,
+    CorrelationStatus, TechnologyFingerprint, TechnologyCorrelationResult
+)
 from pulse.services.enrichment_pipeline import (
-    EnrichmentPipeline, EnrichmentResult, EnrichmentMetrics,
-    VersionEnricher, NVDEnricher, EPSSEnricher, MITREEnricher,
-    KEVEnricher, RiskEnricher, ExploitEnricher, AttackPathEnricher
+    EnrichmentPipeline, EnrichmentResult, EnrichmentMetrics
 )
 import pulse.history as history_mod
 from pulse.security_advisor import SecurityAdvisor
-from pulse.vulnerability.osv_provider import OSVProvider
-from pulse.vulnerability.nvd_provider import NVDProvider
+from pulse.version_intelligence.recommendation_engine import populate_scan_recommendations
 from pulse.website.website_fingerprint import WebsiteFingerprintAnalyzer
+from pulse.website.capability import (
+    evaluate_correlation_eligibility, evaluate_all_eligibilities,
+    CorrelationEligibilityStatus, CorrelationEligibility
+)
+from pulse.website.scoring import get_confidence_multiplier, calculate_adjusted_risk
+from pulse.reporting.report_service import ReportService
 from pulse import __version__
+
+logger = logging.getLogger(__name__)
+
 
 def compute_packages_fingerprint(packages) -> str:
     sorted_pkgs = sorted(packages, key=lambda p: (p.ecosystem or "", p.name or "", p.version or ""))
@@ -24,9 +35,10 @@ def compute_packages_fingerprint(packages) -> str:
     hasher.update("\n".join(pkg_strings).encode('utf-8'))
     return hasher.hexdigest()
 
+
 class WebsiteService:
-    """Orchestrates website scanning and technology fingerprint correlation."""
-    
+    """Orchestrates website scanning and canonical technology package correlation."""
+
     def run(self, console, url: str) -> ScanResult:
         console.print(f"\n[bold]Fingerprinting Website:[/bold] {url}")
         
@@ -59,395 +71,386 @@ class WebsiteService:
         
         return scan_result
 
-    def analyze_technologies(self, console, scan: ScanResult) -> None:
+    def analyze_technologies(self, console, scan: ScanResult) -> ScanResult:
+        """
+        Canonical website technology vulnerability correlation flow.
+        
+        Flow:
+            1. Collect & normalize detected technologies.
+            2. Resolve canonical package identities and evaluate eligibility.
+            3. Deduplicate package identities into unique PackageInfo objects.
+            4. Execute the shared canonical EnrichmentPipeline ONCE.
+            5. Map findings back to each detected technology.
+            6. Build structured TechnologyCorrelationResults with explicit safety states.
+        """
         if not scan.website_assessment:
-            return
-            
-        from pulse.domain.models import FindingSourceType, VersionMetadata, RegistryType, BranchStatus, CorrelationStatus
+            return scan
+
         scan.website_assessment.correlation_status = CorrelationStatus.RUNNING
-        from pulse.website.technology_resolver import resolve_technology
-        from pulse.website.version_resolver import resolve_version, VersionResolutionStatus
-        from pulse.website.lookup_strategy import determine_lookup_strategy, LookupStrategyType
-        
-        
-        from pulse.website.scoring import get_confidence_multiplier, calculate_adjusted_risk
-        from pulse.website.remediation import get_upgrade_recommendation
-        from pulse.enrichment.nvd.correlator import NVDCorrelationEngine
-        from pulse.correlation.models import CorrelationResult, CPECandidate, ResolverMatchType
-        from pulse.website.capability import (
-            evaluate_correlation_eligibility, evaluate_all_eligibilities,
-            CorrelationEligibilityStatus
-        )
-        
-        eligible = []
-        skipped = []
-        tech_to_findings = {} # maps tech_key -> findings list
-        tech_to_pkg = {} # maps tech_key -> PackageInfo
-        
-        # Prepare lookup queues
-        osv_packages = []
-        nvd_correlation_results = []
-        
-        # ====================================================================
-        # Evaluate eligibility for ALL technologies and store results
-        # This is the Single Source of Truth for the entire scan
-        # ====================================================================
-        eligibilities = evaluate_all_eligibilities(scan.website_assessment.technologies)
+
+        # 1. Collect technologies
+        technologies = self._collect_technologies(scan)
+
+        # 2. Normalize technologies
+        normalized = self._normalize_technologies(technologies)
+
+        # 3. Resolve package identities and evaluate eligibility
+        eligibilities, tech_to_identity = self._resolve_package_identities(normalized)
         scan.website_assessment.technology_eligibilities = eligibilities
-        
-        for tech in scan.website_assessment.technologies:
+
+        # 4. Build unique PackageInfo objects
+        unique_packages, tech_to_package_key = self._build_unique_package_infos(
+            normalized, eligibilities, tech_to_identity
+        )
+
+        # Render console status
+        eligible_labels = []
+        skipped_labels = []
+        for tech in normalized:
             tech_id = getattr(tech, "signature_id", "") or tech.name.lower()
             elig = eligibilities.get(tech_id)
-            if not elig:
-                skipped.append(f"{tech.name} (resolution failed)")
-                continue
-            
-            # ---- Route based on eligibility status ----
-            if elig.status == CorrelationEligibilityStatus.DETECTION_ONLY:
-                skipped.append(f"{tech.name} (detection only)")
-                continue
-            elif elig.status == CorrelationEligibilityStatus.CONFIDENCE_TOO_LOW:
-                skipped.append(f"{tech.name} (confidence {tech.confidence} < 40)")
-                continue
-            elif elig.status == CorrelationEligibilityStatus.RESOLUTION_FAILED:
-                skipped.append(f"{tech.name} (identity resolution failed)")
-                continue
-            elif elig.status == CorrelationEligibilityStatus.INTELLIGENCE_UNAVAILABLE:
-                skipped.append(f"{tech.name} (vulnerability intelligence unavailable)")
-                continue
-            elif elig.status == CorrelationEligibilityStatus.VERSION_REQUIRED:
-                skipped.append(f"{tech.name} (version required for correlation)")
-                continue
-            
-            # CORRELATABLE or PARTIALLY_CORRELATABLE — proceed with correlation
-            tech_key = elig.catalog_key or tech.name.lower()
-            
-            # Normalize tech name to catalog key
-            tech.name = tech_key
-            
-            normalized_version, version_status = resolve_version(tech_key, tech.version, tech.confidence)
-            
-            # Determine lookup strategy from eligibility
-            strategy_str = elig.lookup_strategy or "both"
-            if strategy_str == "osv":
-                strategy = LookupStrategyType.OSV_ONLY
-            elif strategy_str == "nvd":
-                strategy = LookupStrategyType.NVD_ONLY
+            ver_disp = tech.version if (tech.version and str(tech.version).strip().lower() != "unknown") else "No Version"
+            if elig and elig.is_eligible:
+                pkg_desc = f"{elig.ecosystem}/{elig.package_name}@{ver_disp}" if (elig.ecosystem and elig.package_name) else f"{tech.name} {ver_disp}"
+                eligible_labels.append(f"✓ {tech.name} → {pkg_desc} ({elig.status.value})")
             else:
-                strategy = LookupStrategyType.OSV_AND_NVD
-            
-            # Record eligible
-            version_disp = normalized_version if normalized_version else "Unknown"
-            status_label = "\u2713" if elig.status == CorrelationEligibilityStatus.CORRELATABLE else "\u25d0"
-            eligible.append(f"{status_label} {tech.name} {version_disp} (Strategy: {strategy.value.upper()}, Sources: {', '.join(elig.intelligence_sources)})")
-            
-            # Map inputs for lookup
-            from pulse.website.technology_catalog import TECHNOLOGY_CATALOG
-            catalog_entry = TECHNOLOGY_CATALOG.get(tech_key)
-            display_name = catalog_entry.get("display_name", tech.name) if catalog_entry else tech.name
-            
-            # Create PackageInfo representing the technology
-            pkg_name = elig.package_name or tech_key
-            eco = elig.ecosystem or "website"
-            
-            # If strategy involves OSV, map to OSV package
-            if strategy in (LookupStrategyType.OSV_ONLY, LookupStrategyType.OSV_AND_NVD):
-                if elig.package_name and elig.ecosystem and normalized_version:
-                    pkg = PackageInfo(name=elig.package_name, version=normalized_version, ecosystem=elig.ecosystem, dependency_type="DIRECT")
-                    osv_packages.append((tech_key, pkg))
-                    tech_to_pkg[tech_key] = pkg
-                    
-            # If strategy involves NVD, map to CPE candidate
-            if strategy in (LookupStrategyType.NVD_ONLY, LookupStrategyType.OSV_AND_NVD):
-                if elig.cpe_vendor and elig.cpe_product:
-                    ver_for_cpe = normalized_version or "*"
-                    cpe_str = f"cpe:2.3:a:{elig.cpe_vendor}:{elig.cpe_product}:{ver_for_cpe}:*:*:*:*:*:*:*"
-                    cpe_template = f"cpe:2.3:a:{elig.cpe_vendor}:{elig.cpe_product}:*:*:*:*:*:*:*"
-                    candidate = CPECandidate(
-                        cpe_template=cpe_template,
-                        detected_version=normalized_version,
-                        resolved_cpe=cpe_str,
-                        confidence=tech.confidence,
-                        source="catalog",
-                        vendor=elig.cpe_vendor,
-                        product=elig.cpe_product,
-                        exact_version_match=bool(normalized_version),
-                        match_type=ResolverMatchType.EXACT
-                    )
-                    corr_result = CorrelationResult(
-                        technology=tech_key,
-                        inventory_technology_key=tech_key,
-                        candidates=[candidate],
-                        selected_candidate=candidate,
-                        resolution_confidence=tech.confidence
-                    )
-                    nvd_correlation_results.append((tech_key, corr_result))
-                    
-            # Ensure at least a dummy package exists for display/remediation if no lookup mapped it
-            if tech_key not in tech_to_pkg:
-                tech_to_pkg[tech_key] = PackageInfo(
-                    name=pkg_name,
-                    version=normalized_version or "Unknown",
-                    ecosystem=eco,
-                    dependency_type="DIRECT"
-                )
-                
-        console.print("\n[bold]Analyzing eligible technologies...[/bold]\n")
-        
-        if eligible:
-            console.print("Eligible:")
-            for item in eligible:
-                console.print(f"- {item}")
-        
-        if skipped:
-            console.print("\nSkipped:")
-            for item in skipped:
-                console.print(f"- {item}")
-                
+                reason = elig.reason if elig else "Unresolved"
+                skipped_labels.append(f"• {tech.name} ({reason})")
+
+        console.print("\n[bold]Analyzing detected web technologies...[/bold]\n")
+        if eligible_labels:
+            console.print("[bold green]Eligible for Vulnerability Correlation:[/bold green]")
+            for item in eligible_labels:
+                console.print(f"  {item}")
+        if skipped_labels:
+            console.print("\n[dim]Skipped / Non-Correlatable:[/dim]")
+            for item in skipped_labels:
+                console.print(f"  {item}")
         console.print()
-        
-        all_findings = []
-        osv_provider = OSVProvider()
-        nvd_provider = NVDProvider()
-        
+
+        # 5. Correlate packages via shared EnrichmentPipeline ONCE
+        all_findings, attack_paths, cpe_findings = self._correlate_packages(
+            unique_packages, normalized, eligibilities, console
+        )
+
+        # 6. Map findings back to each technology
+        tech_findings_map = self._map_findings_to_technologies(
+            normalized, eligibilities, tech_to_package_key, all_findings, cpe_findings
+        )
+
+        # 7. Build structured TechnologyCorrelationResult for every detected technology
+        correlation_results, correlated_count, failed_count = self._build_correlation_results(
+            normalized, eligibilities, tech_findings_map
+        )
+        scan.website_assessment.technology_correlation_results = correlation_results
+        scan.website_assessment.correlated_technologies = correlated_count
+        scan.website_assessment.failed_technologies = failed_count
+
+        # 8. Finalize ScanResult
+        unified_findings = list(all_findings)
+        for cf in cpe_findings:
+            if not any(f.cve_id == cf.cve_id and f.package.name == cf.package.name for f in unified_findings):
+                unified_findings.append(cf)
+
+        unified_findings.sort(key=lambda x: x.risk_heat_score, reverse=True)
+
+        scan.findings = unified_findings
+        scan.attack_paths = attack_paths
+        scan.packages_scanned = len(unique_packages)
+        scan.attack_surface_score = EnrichmentPipeline.calculate_attack_surface_score(unified_findings)
+
+        # Build target fingerprint from package/version list
+        if unique_packages:
+            sorted_pkg_str = "\n".join(f"{p.ecosystem}:{p.name}@{p.version}" for p in sorted(unique_packages, key=lambda p: (p.ecosystem or "", p.name or "")))
+            scan.target_fingerprint = hashlib.sha256(sorted_pkg_str.encode("utf-8")).hexdigest()
+
+        # Populate upgrade recommendations and advisory
+        populate_scan_recommendations(scan)
+
+        scan.website_assessment.correlation_status = (
+            CorrelationStatus.COMPLETED if (failed_count == 0 or correlated_count > 0) else CorrelationStatus.FAILED
+        )
+        scan.website_assessment.correlation_completed_at = datetime.now()
+
+        if not getattr(scan, "_reconstructing", False):
+            try:
+                history = history_mod.HistoryService()
+                delta = history.get_posture_delta(scan)
+                advisor = SecurityAdvisor()
+                scan._advisor_report = advisor.analyze(scan)
+                scan._delta = delta
+                ReportService.create_scan_report(scan, posture_delta=delta, advisor=advisor)
+            except Exception as e:
+                logger.debug("History/Report generation in website service: %s", e)
+
+        return scan
+
+    # -----------------------------------------------------------------------
+    # Modular Pipeline Helpers
+    # -----------------------------------------------------------------------
+
+    def _collect_technologies(self, scan: ScanResult) -> List[TechnologyFingerprint]:
+        if not scan.website_assessment:
+            return []
+        return scan.website_assessment.technologies or []
+
+    def _normalize_technologies(self, technologies: List[TechnologyFingerprint]) -> List[TechnologyFingerprint]:
+        normalized = []
+        for tech in technologies:
+            raw_name = getattr(tech, "name", "")
+            raw_version = getattr(tech, "version", None)
+            if raw_version and isinstance(raw_version, str):
+                v_clean = raw_version.strip().lstrip("vV")
+                tech.version = v_clean if v_clean and v_clean.lower() != "unknown" else None
+            normalized.append(tech)
+        return normalized
+
+    def _resolve_package_identities(
+        self, technologies: List[TechnologyFingerprint]
+    ) -> Tuple[Dict[str, CorrelationEligibility], Dict[str, Any]]:
+        eligibilities = evaluate_all_eligibilities(technologies)
+        tech_to_identity: Dict[str, Any] = {}
+        for tech in technologies:
+            tech_id = getattr(tech, "signature_id", "") or tech.name.lower()
+            elig = eligibilities.get(tech_id)
+            if elig and elig.package_identity:
+                tech_to_identity[tech.name] = elig.package_identity
+        return eligibilities, tech_to_identity
+
+    def _build_unique_package_infos(
+        self,
+        technologies: List[TechnologyFingerprint],
+        eligibilities: Dict[str, CorrelationEligibility],
+        tech_to_identity: Dict[str, Any]
+    ) -> Tuple[List[PackageInfo], Dict[str, Tuple[str, str, str]]]:
+        """
+        Deduplicate resolved technologies into unique PackageInfo instances.
+        Returns:
+            (unique_package_list, tech_name_to_package_key_mapping)
+        """
+        unique_map: Dict[Tuple[str, str, str], PackageInfo] = {}
+        tech_to_package_key: Dict[str, Tuple[str, str, str]] = {}
+
+        for tech in technologies:
+            tech_id = getattr(tech, "signature_id", "") or tech.name.lower()
+            elig = eligibilities.get(tech_id)
+            if not elig or not elig.is_eligible:
+                continue
+
+            eco = elig.ecosystem
+            pkg_name = elig.package_name
+            ver = tech.version
+
+            if eco and pkg_name and ver:
+                pkg_key = (eco.lower().strip(), pkg_name.lower().strip(), str(ver).strip())
+                if pkg_key not in unique_map:
+                    unique_map[pkg_key] = PackageInfo(
+                        name=pkg_name,
+                        version=str(ver).strip(),
+                        ecosystem=eco,
+                        dependency_type="DIRECT"
+                    )
+                tech_to_package_key[tech.name] = pkg_key
+
+        return list(unique_map.values()), tech_to_package_key
+
+    def _correlate_packages(
+        self,
+        unique_packages: List[PackageInfo],
+        technologies: List[TechnologyFingerprint],
+        eligibilities: Dict[str, CorrelationEligibility],
+        console: Any
+    ) -> Tuple[List[VulnerabilityFinding], List[Any], List[VulnerabilityFinding]]:
+        """
+        Executes shared EnrichmentPipeline ONCE for all unique packages and
+        correlates CPE-only technologies where applicable.
+        """
+        all_findings: List[VulnerabilityFinding] = []
+        attack_paths: List[Any] = []
+        cpe_findings: List[VulnerabilityFinding] = []
+
         with Progress(
             SpinnerColumn(spinner_name="line"),
             TextColumn("[progress.description]{task.description}"),
             transient=False,
         ) as progress:
-            
-            # 1. OSV Matching
-            osv_succeeded = True
-            if osv_packages:
-                task_osv = progress.add_task("[yellow]Matching vulnerabilities (OSV)...[/yellow]", total=None)
-                pkgs_list = [pkg for _, pkg in osv_packages]
+            # 1. Execute Shared EnrichmentPipeline for canonical packages
+            if unique_packages:
+                task_scan = progress.add_task(
+                    f"[yellow]Correlating vulnerabilities via shared pipeline ({len(unique_packages)} unique packages)...[/yellow]",
+                    total=None
+                )
+                pipeline = EnrichmentPipeline()
+                enrich_result = pipeline.run(unique_packages, progress=progress)
+                all_findings = enrich_result.findings
+                attack_paths = enrich_result.attack_paths
+                progress.update(
+                    task_scan,
+                    completed=1,
+                    description=f"[green]Package Vulnerability Pipeline[/green] found {len(all_findings)} vulnerabilities"
+                )
+
+            # 2. Correlate CPE-only technologies
+            cpe_only_techs = []
+            for tech in technologies:
+                tech_id = getattr(tech, "signature_id", "") or tech.name.lower()
+                elig = eligibilities.get(tech_id)
+                if elig and elig.is_eligible and not elig.package_name and (elig.cpe_vendor and elig.cpe_product):
+                    cpe_only_techs.append((tech, elig))
+
+            if cpe_only_techs:
+                task_cpe = progress.add_task("[yellow]Matching CPE-only technologies (NVD)...[/yellow]", total=None)
                 try:
-                    osv_findings = osv_provider.lookup_packages(pkgs_list)
-                    for f in osv_findings:
-                        raw = f.description or ""
-                        f.summary = raw[:250] + "..." if len(raw) > 250 else raw
-                        for tech_key, pkg in osv_packages:
-                            if pkg.name.lower() == f.package.name.lower() and pkg.version == f.package.version:
-                                f.source_type = FindingSourceType.WEBSITE
-                                f.source_asset = tech_key
-                                if tech_key not in tech_to_findings:
-                                    tech_to_findings[tech_key] = []
-                                tech_to_findings[tech_key].append(f)
-                                all_findings.append(f)
-                                break
-                    progress.update(task_osv, completed=1, description=f"[green]OSV Matching[/green] found {len(osv_findings)} vulnerabilities")
+                    from pulse.enrichment.nvd.correlator import NVDCorrelationEngine
+                    from pulse.correlation.models import CorrelationResult, CPECandidate, ResolverMatchType
+                    engine = NVDCorrelationEngine()
+                    cpe_results = []
+                    for tech, elig in cpe_only_techs:
+                        ver_str = tech.version or "*"
+                        cpe_str = f"cpe:2.3:a:{elig.cpe_vendor}:{elig.cpe_product}:{ver_str}:*:*:*:*:*:*:*"
+                        candidate = CPECandidate(
+                            cpe_template=f"cpe:2.3:a:{elig.cpe_vendor}:{elig.cpe_product}:*:*:*:*:*:*:*",
+                            detected_version=tech.version,
+                            resolved_cpe=cpe_str,
+                            confidence=tech.confidence,
+                            source="capability",
+                            vendor=elig.cpe_vendor,
+                            product=elig.cpe_product,
+                            exact_version_match=bool(tech.version),
+                            match_type=ResolverMatchType.EXACT
+                        )
+                        cpe_results.append(CorrelationResult(
+                            technology=tech.name,
+                            inventory_technology_key=tech.name.lower(),
+                            candidates=[candidate],
+                            selected_candidate=candidate,
+                            resolution_confidence=tech.confidence
+                        ))
+
+                    correlated_cpe_vulns, _ = engine.correlate(cpe_results)
+                    for cv in correlated_cpe_vulns:
+                        dummy_pkg = PackageInfo(name=cv.technology_name, version=cv.version or "Unknown", ecosystem="CPE")
+                        cpe_findings.append(VulnerabilityFinding(
+                            package=dummy_pkg,
+                            cve_id=cv.cve_id,
+                            cvss_score=cv.cvss_v3_score or 0.0,
+                            cvss_severity=cv.severity or "UNKNOWN",
+                            description=cv.description or "",
+                            source="NVD",
+                            published_date=cv.published_date.strftime("%Y-%m-%d") if cv.published_date else None,
+                            nvd_url=cv.nvd_url or "",
+                            cwe=cv.cwe,
+                            source_type=FindingSourceType.WEBSITE,
+                            source_asset=cv.technology_name
+                        ))
+                    progress.update(task_cpe, completed=1, description=f"[green]CPE Correlation[/green] found {len(cpe_findings)} vulnerabilities")
                 except Exception as e:
-                    osv_succeeded = False
-                    import logging
-                    logging.getLogger(__name__).error(f"OSV matching failed: {e}")
-                    progress.update(task_osv, completed=1, description="[red]OSV Matching failed[/red]")
-                
-            # 2. NVD CPE Matching
-            nvd_succeeded = True
-            if nvd_correlation_results:
-                task_nvd = progress.add_task("[yellow]Matching vulnerabilities (NVD CPE)...[/yellow]", total=None)
-                engine = NVDCorrelationEngine()
-                results_list = [res for _, res in nvd_correlation_results]
-                try:
-                    correlated_vulns, _ = engine.correlate(results_list)
-                    nvd_count = 0
-                    for cv in correlated_vulns:
-                        for tech_key, corr_res in nvd_correlation_results:
-                            if corr_res.technology == cv.technology_name:
-                                pkg = tech_to_pkg.get(tech_key)
-                                if pkg:
-                                    finding = VulnerabilityFinding(
-                                        package=pkg,
-                                        cve_id=cv.cve_id,
-                                        cvss_score=cv.cvss_v3_score or 0.0,
-                                        cvss_severity=cv.severity or "UNKNOWN",
-                                        epss_score=0.0,
-                                        epss_percent="0%",
-                                        kev_match=False,
-                                        risk_heat_score=0,
-                                        description=cv.description or "",
-                                        fix_version=None,
-                                        source="NVD",
-                                        published_date=cv.published_date.strftime("%Y-%m-%d") if cv.published_date else None,
-                                        last_modified_date=None,
-                                        nvd_url=cv.nvd_url or "",
-                                        cwe=cv.cwe,
-                                        source_type=FindingSourceType.WEBSITE,
-                                        source_asset=tech_key
-                                    )
-                                    if tech_key not in tech_to_findings:
-                                        tech_to_findings[tech_key] = []
-                                    tech_to_findings[tech_key].append(finding)
-                                    all_findings.append(finding)
-                                    nvd_count += 1
-                                break
-                    progress.update(task_nvd, completed=1, description=f"[green]NVD CPE Matching[/green] found {nvd_count} vulnerabilities")
-                except Exception as e:
-                    nvd_succeeded = False
-                    import logging
-                    logging.getLogger(__name__).error(f"NVD matching failed: {e}")
-                    progress.update(task_nvd, completed=1, description="[red]NVD CPE Matching failed[/red]")
-                
-            # 3. Fetching registry info for version intelligence
-            supported_ecosystems = (
-                "pypi", "python", "npm", "node", "node.js",
-                "crates.io", "rust", "cargo", "rubygems", "ruby",
-                "composer", "php", "packagist", "maven", "java",
-                "nuget", ".net", "dotnet"
+                    logger.debug("CPE correlation failed: %s", e)
+                    progress.update(task_cpe, completed=1, description="[yellow]CPE Correlation completed[/yellow]")
+
+        # Tag all findings with FindingSourceType.WEBSITE and evidence adjustments
+        for finding in all_findings:
+            finding.source_type = FindingSourceType.WEBSITE
+            matched_tech = next(
+                (t for t in technologies if (
+                    t.name.lower() == finding.package.name.lower() or
+                    (eligibilities.get(getattr(t, "signature_id", "") or t.name.lower()) and
+                     eligibilities[getattr(t, "signature_id", "") or t.name.lower()].package_name and
+                     eligibilities[getattr(t, "signature_id", "") or t.name.lower()].package_name.lower() == finding.package.name.lower())
+                )),
+                None
             )
-            registry_packages = [pkg for pkg in tech_to_pkg.values() if pkg.ecosystem and pkg.ecosystem.lower() in supported_ecosystems]
-            if registry_packages:
-                # Custom stage pipeline: Registry Version Enrichment
-                reg_pipeline = EnrichmentPipeline(stages=[VersionEnricher])
-                reg_pipeline.run(registry_packages, progress=progress)
-                
-            # Run remaining enrichment stages on findings
-            if all_findings:
-                enrich_result = EnrichmentResult(
-                    findings=all_findings,
-                    attack_paths=[],
-                    packages=registry_packages,
-                    metrics=EnrichmentMetrics()
-                )
-                
-                stages = [
-                    NVDEnricher,
-                    EPSSEnricher,
-                    MITREEnricher,
-                    KEVEnricher,
-                    RiskEnricher,
-                    ExploitEnricher,
-                    AttackPathEnricher
-                ]
-                
-                for stage_cls in stages:
-                    try:
-                        stage = stage_cls()
-                        stage.enrich(enrich_result, progress=progress)
-                    except Exception as e:
-                        import logging
-                        logging.getLogger(__name__).error(f"Enrichment stage {stage_cls.__name__} failed: {e}")
-                
-                # Retrieve generated attack paths
-                scan.attack_paths = enrich_result.attack_paths
-                
-                # Apply Confidence Weighting & Risk adjustments
-                task_score = progress.add_task("[yellow]Applying Confidence Weighting...[/yellow]", total=None)
-                for finding in all_findings:
-                    tech_item = next((t for t in scan.website_assessment.technologies if resolve_technology(t.name) == finding.source_asset), None)
-                    if tech_item:
-                        mult = get_confidence_multiplier(tech_item.evidence)
-                        finding.detection_confidence = tech_item.confidence
-                        finding.source_evidence = [f"{ev.method.value}: {ev.source}" for ev in tech_item.evidence]
-                        finding.risk_heat_score = calculate_adjusted_risk(finding.risk_heat_score, mult)
-                        
-                all_findings.sort(key=lambda x: x.risk_heat_score, reverse=True)
-                progress.update(task_score, completed=1, description="[green]Weighting & Scoring completed[/green]")
-                
-        # Generate upgrade advisories for each technology
-        for tech_key, pkg in tech_to_pkg.items():
-            tech_findings = tech_to_findings.get(tech_key, [])
-            
-            rec = None
-            if pkg.ecosystem and pkg.ecosystem.lower() in supported_ecosystems and getattr(pkg, "version_metadata", None):
-                try:
-                    reg_provider = VersionIntelligenceService()
-                    rec = reg_provider.get_security_fix_version(pkg, pkg.version, tech_findings)
-                except Exception:
-                    pass
-            
-            if not rec:
-                rec = get_upgrade_recommendation(tech_key, pkg.version, tech_findings)
-            
-            tech_item = next((t for t in scan.website_assessment.technologies if resolve_technology(t.name) == tech_key), None)
-            from pulse.website.technology_catalog import TECHNOLOGY_CATALOG
-            catalog_entry = TECHNOLOGY_CATALOG.get(tech_key)
-            display_name = catalog_entry.get("display_name", tech_key) if catalog_entry else tech_key
-            
-            if not pkg.version_metadata:
-                normalized_version, version_status = resolve_version(tech_key, tech_item.version if tech_item else None, tech_item.confidence if tech_item else 100)
-                pkg.version_metadata = VersionMetadata(
-                    current_version=pkg.version,
-                    latest_stable_version=rec.latest_stable_version if rec else None,
-                    latest_security_fix=rec.latest_security_fix if rec else None,
-                    minimum_safe_version=rec.minimum_safe_version if rec else None,
-                    latest_lts_version=None,
-                    canonical_name=tech_key,
-                    display_name=display_name,
-                    source_registry=RegistryType.UNKNOWN,
-                    source_confidence="offline",
-                    registry_available=False,
-                    verification_state="VERIFIED" if version_status == VersionResolutionStatus.VERIFIED else "UNVERIFIED",
-                    branch_status=BranchStatus.UNKNOWN,
-                    source_timestamp=datetime.now(),
-                    recommendation=rec
-                )
+            if matched_tech:
+                finding.source_asset = matched_tech.name
+                mult = get_confidence_multiplier(matched_tech.evidence)
+                finding.detection_confidence = matched_tech.confidence
+                finding.source_evidence = [f"{ev.method.value if hasattr(ev.method, 'value') else ev.method}: {ev.source}" for ev in matched_tech.evidence]
+                finding.risk_heat_score = calculate_adjusted_risk(finding.risk_heat_score, mult)
+
+        return all_findings, attack_paths, cpe_findings
+
+    def _map_findings_to_technologies(
+        self,
+        technologies: List[TechnologyFingerprint],
+        eligibilities: Dict[str, CorrelationEligibility],
+        tech_to_package_key: Dict[str, Tuple[str, str, str]],
+        all_findings: List[VulnerabilityFinding],
+        cpe_findings: List[VulnerabilityFinding]
+    ) -> Dict[str, List[VulnerabilityFinding]]:
+        """Maps unified findings back to their respective technology fingerprints."""
+        tech_findings_map: Dict[str, List[VulnerabilityFinding]] = {t.name: [] for t in technologies}
+
+        for tech in technologies:
+            pkg_key = tech_to_package_key.get(tech.name)
+            if pkg_key:
+                eco_key, name_key, ver_key = pkg_key
+                for f in all_findings:
+                    f_eco = (f.package.ecosystem or "").lower().strip()
+                    f_name = (f.package.name or "").lower().strip()
+                    f_ver = str(f.package.version or "").strip()
+                    if f_name == name_key and (f_ver == ver_key or not ver_key):
+                        if f not in tech_findings_map[tech.name]:
+                            tech_findings_map[tech.name].append(f)
+
+            # Also check CPE findings
+            for cf in cpe_findings:
+                if cf.source_asset and cf.source_asset.lower() == tech.name.lower():
+                    if cf not in tech_findings_map[tech.name]:
+                        tech_findings_map[tech.name].append(cf)
+
+        return tech_findings_map
+
+    def _build_correlation_results(
+        self,
+        technologies: List[TechnologyFingerprint],
+        eligibilities: Dict[str, CorrelationEligibility],
+        tech_findings_map: Dict[str, List[VulnerabilityFinding]]
+    ) -> Tuple[Dict[str, TechnologyCorrelationResult], int, int]:
+        """
+        Builds explicit structured TechnologyCorrelationResult objects ensuring
+        critical security state semantics.
+        """
+        correlation_results: Dict[str, TechnologyCorrelationResult] = {}
+        correlated_count = 0
+        failed_count = 0
+
+        for tech in technologies:
+            tech_id = getattr(tech, "signature_id", "") or tech.name.lower()
+            elig = eligibilities.get(tech_id)
+            findings = tech_findings_map.get(tech.name, [])
+
+            if findings:
+                status = "VULNERABILITIES_FOUND"
+                reason = f"{len(findings)} vulnerabilities detected"
+                correlated_count += 1
+            elif elig and elig.is_eligible and elig.version_available:
+                status = "NO_KNOWN_VULNERABILITIES"
+                reason = "No known vulnerabilities found in verified package identity"
+                correlated_count += 1
+            elif elig and elig.status == CorrelationEligibilityStatus.VERSION_REQUIRED:
+                status = "VERSION_REQUIRED"
+                reason = "Version required for vulnerability correlation"
+            elif elig and elig.status == CorrelationEligibilityStatus.DETECTION_ONLY:
+                status = "DETECTION_ONLY"
+                reason = elig.reason or "Detection-only technology / infrastructure"
             else:
-                pkg.version_metadata.recommendation = rec
-                
-        # Compute Attack Surface Score
-        attack_surface_score = 0
-        if all_findings:
-            avg_risk = sum(f.risk_heat_score for f in all_findings) // len(all_findings)
-            kev_penalty = sum(10 for f in all_findings if f.kev_match)
-            attack_surface_score = min(100, avg_risk + kev_penalty)
-            
-        scan.findings = all_findings
-        scan.packages_scanned = len(tech_to_pkg)
-        scan.attack_surface_score = attack_surface_score
-        
-        # Build target fingerprint from package/version list
-        sorted_keys = sorted(tech_to_pkg.keys())
-        target_fp_raw = "\n".join(f"{k}:{tech_to_pkg[k].version}" for k in sorted_keys)
-        scan.target_fingerprint = hashlib.sha256(target_fp_raw.encode("utf-8")).hexdigest()
-        
+                status = "CORRELATION_UNAVAILABLE"
+                reason = (elig.reason if elig else "") or "Package identity could not be resolved"
+                failed_count += 1
 
-        
-        # Calculate Correlation metrics and status
-        succeeded_techs = 0
-        failed_techs = 0
-        for tech_key in tech_to_pkg.keys():
-            strategy = determine_lookup_strategy(tech_key)
-            if strategy == LookupStrategyType.OSV_ONLY:
-                if osv_succeeded:
-                    succeeded_techs += 1
-                else:
-                    failed_techs += 1
-            elif strategy == LookupStrategyType.NVD_ONLY:
-                if nvd_succeeded:
-                    succeeded_techs += 1
-                else:
-                    failed_techs += 1
-            elif strategy == LookupStrategyType.OSV_AND_NVD:
-                if osv_succeeded and nvd_succeeded:
-                    succeeded_techs += 1
-                elif osv_succeeded or nvd_succeeded:
-                    succeeded_techs += 1
-                else:
-                    failed_techs += 1
+            pkg_name = elig.package_name if elig else None
+            eco = elig.ecosystem if elig else None
+            reg = getattr(elig.package_identity, "registry", None) if elig else None
 
-        scan.website_assessment.correlated_technologies = succeeded_techs
-        scan.website_assessment.failed_technologies = failed_techs
+            correlation_results[tech.name] = TechnologyCorrelationResult(
+                technology_name=tech.name,
+                detected_version=tech.version,
+                package_name=pkg_name,
+                ecosystem=eco,
+                registry=reg,
+                correlation_status=status,
+                correlation_reason=reason,
+                vulnerabilities=findings
+            )
 
-        if len(tech_to_pkg) == 0:
-            scan.website_assessment.correlation_status = CorrelationStatus.COMPLETED
-        else:
-            if failed_techs > 0 and succeeded_techs > 0:
-                scan.website_assessment.correlation_status = CorrelationStatus.PARTIAL
-            elif failed_techs > 0 and succeeded_techs == 0:
-                scan.website_assessment.correlation_status = CorrelationStatus.FAILED
-            else:
-                scan.website_assessment.correlation_status = CorrelationStatus.COMPLETED
-        scan.website_assessment.correlation_completed_at = datetime.now()
-        
-        if not getattr(scan, "_reconstructing", False):
-            history = history_mod.HistoryService()
-            delta = history.get_posture_delta(scan)
-            advisor = SecurityAdvisor()
-            scan._advisor_report = advisor.analyze(scan)
-            scan._delta = delta
-
-            from pulse.reporting.report_service import ReportService
-            ReportService.create_scan_report(scan, posture_delta=delta, advisor=advisor)
-        
-        return scan
+        return correlation_results, correlated_count, failed_count

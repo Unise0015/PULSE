@@ -188,7 +188,8 @@ class DeclarativeTechnologyEngine:
                 domain=rule_domain,
                 direct_detection=not is_inferred,
                 inferred=is_inferred,
-                vulnerability_status=vuln_stat
+                vulnerability_status=vuln_stat,
+                correlation_supported=True
             )
             fingerprints.append(fp)
 

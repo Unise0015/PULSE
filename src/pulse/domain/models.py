@@ -291,7 +291,7 @@ class TechnologyFingerprint:
     children: List[str] = field(default_factory=list)
     cpe_candidates: List[CPECandidate] = field(default_factory=list)
     ecosystem: Optional[str] = None
-    correlation_supported: bool = False
+    correlation_supported: bool = True
     detection_mode: DetectionMode = DetectionMode.PASSIVE
     vendor: Optional[str] = None
     domain: str = "web"
@@ -349,6 +349,17 @@ class CorrelationStatus(str, Enum):
     FAILED = "Failed"
 
 @dataclass
+class TechnologyCorrelationResult:
+    technology_name: str
+    detected_version: Optional[str] = None
+    package_name: Optional[str] = None
+    ecosystem: Optional[str] = None
+    registry: Optional[str] = None
+    correlation_status: str = "CORRELATION_UNAVAILABLE"  # VULNERABILITIES_FOUND, NO_KNOWN_VULNERABILITIES, CORRELATION_UNAVAILABLE, VERSION_REQUIRED, DETECTION_ONLY
+    correlation_reason: str = ""
+    vulnerabilities: List[VulnerabilityFinding] = field(default_factory=list)
+
+@dataclass
 class WebsiteAssessment:
     url: str
     technologies: List[TechnologyFingerprint] = field(default_factory=list)
@@ -359,6 +370,7 @@ class WebsiteAssessment:
     correlated_technologies: int = 0
     failed_technologies: int = 0
     technology_eligibilities: Dict[str, Any] = field(default_factory=dict)
+    technology_correlation_results: Dict[str, TechnologyCorrelationResult] = field(default_factory=dict)
 
 
 @dataclass

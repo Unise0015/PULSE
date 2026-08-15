@@ -15,7 +15,9 @@ Architecture:
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
+
+from pulse.ecosystems.package_identity import PackageIdentity, resolve_technology_package
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +31,7 @@ class CorrelationEligibilityStatus(str, Enum):
     CORRELATABLE = "Correlatable"
     PARTIALLY_CORRELATABLE = "Partial"
     VERSION_REQUIRED = "Version Required"
+    CORRELATION_UNAVAILABLE = "Correlation Unavailable"
     INTELLIGENCE_UNAVAILABLE = "Intel N/A"
     DETECTION_ONLY = "Detection Only"
     CONFIDENCE_TOO_LOW = "Low Confidence"
@@ -69,6 +72,7 @@ class CorrelationEligibility:
 
     catalog_key: Optional[str] = None
 
+    package_identity: Optional[PackageIdentity] = None
     package_name: Optional[str] = None
     ecosystem: Optional[str] = None
 
@@ -131,7 +135,6 @@ def _resolve_via_fingerprint(tech) -> dict:
     # Ecosystem & package from signature fields
     if getattr(tech, "ecosystem", None):
         result["ecosystem"] = tech.ecosystem
-        # Use the technology name as the package name if no catalog override
         result["package"] = tech.name.lower()
 
     # CPE candidates from the fingerprint itself
@@ -139,7 +142,7 @@ def _resolve_via_fingerprint(tech) -> dict:
     for cand in cpe_cands:
         cpe_str = cand.cpe if hasattr(cand, "cpe") else str(cand)
         parts = cpe_str.split(":")
-        if len(parts) >= 6:
+        if len(parts) >= 5:
             result["cpe_vendor"] = parts[3]
             result["cpe_product"] = parts[4]
             break
@@ -174,8 +177,7 @@ def _determine_provider_capabilities(
             cpe_product=cpe_product,
         ))
 
-    # EPSS / KEV are downstream enrichments; they are always available if
-    # at least one primary provider (OSV or NVD) resolves CVEs.
+    # EPSS / KEV are downstream enrichments; they are available if primary providers are present
     if caps:
         caps.append(ProviderCapability(provider="EPSS", supported=True))
         caps.append(ProviderCapability(provider="KEV", supported=True))
@@ -203,27 +205,15 @@ def _lookup_strategy_from_caps(caps: List[ProviderCapability]) -> Optional[str]:
 def evaluate_correlation_eligibility(tech) -> CorrelationEligibility:
     """Determine the correlation eligibility of a detected technology.
 
-    Resolution sequence (per specification §5):
-        TechnologyFingerprint
-            → Alias / normalized name
-            → Technology Catalog
-            → Ecosystem Package Mapping (from fingerprint)
-            → CPE Mapping (from fingerprint)
-            → Provider Capability Mapping
-            → CorrelationEligibility
-
-    A missing catalog entry does NOT automatically make a technology
-    unsupported if package/CPE/provider mappings can resolve it.
-
-    Args:
-        tech: A TechnologyFingerprint instance.
-
-    Returns:
-        CorrelationEligibility — the single authoritative result.
+    Resolution sequence:
+        1. Validate fingerprint
+        2. Explicit Detection-Only check
+        3. Identity Resolution (Catalog -> Fingerprint -> Package Resolver -> CPE)
+        4. Confidence Gate
+        5. Provider Capabilities & Strategy
+        6. Version Check & Status Determination
     """
-    # ------------------------------------------------------------------
     # Step 1 — Validate fingerprint
-    # ------------------------------------------------------------------
     tech_name = getattr(tech, "name", None)
     tech_id = getattr(tech, "signature_id", "") or (tech_name or "").lower()
     if not tech_name:
@@ -234,10 +224,8 @@ def evaluate_correlation_eligibility(tech) -> CorrelationEligibility:
             reason="Invalid technology fingerprint (missing name)",
         )
 
-    # ------------------------------------------------------------------
-    # Step 2 — Explicit Detection-Only
-    # ------------------------------------------------------------------
-    correlation_flag = getattr(tech, "correlation_supported", False)
+    # Step 2 — Explicit Detection-Only Check
+    correlation_flag = getattr(tech, "correlation_supported", True)
     if not correlation_flag:
         return CorrelationEligibility(
             status=CorrelationEligibilityStatus.DETECTION_ONLY,
@@ -246,9 +234,7 @@ def evaluate_correlation_eligibility(tech) -> CorrelationEligibility:
             reason="Technology signature explicitly marked as detection-only",
         )
 
-    # ------------------------------------------------------------------
-    # Step 3 — Identity Resolution (multi-source)
-    # ------------------------------------------------------------------
+    # Step 3 — Multi-source Identity Resolution
     catalog_key: Optional[str] = None
     package_name: Optional[str] = None
     ecosystem: Optional[str] = None
@@ -273,7 +259,7 @@ def evaluate_correlation_eligibility(tech) -> CorrelationEligibility:
                 cpe_vendor = parts[3]
                 cpe_product = parts[4]
 
-    # 3b. Fingerprint-level identity (fills gaps the catalog didn't cover)
+    # 3b. Fingerprint-level identity
     fp_identity = _resolve_via_fingerprint(tech)
     if not ecosystem and fp_identity.get("ecosystem"):
         ecosystem = fp_identity["ecosystem"]
@@ -284,25 +270,30 @@ def evaluate_correlation_eligibility(tech) -> CorrelationEligibility:
     if not cpe_product and fp_identity.get("cpe_product"):
         cpe_product = fp_identity["cpe_product"]
 
-    # ------------------------------------------------------------------
-    # Step 3 (cont.) — Check whether at least one identity resolved
-    # ------------------------------------------------------------------
+    # 3c. Canonical Package Resolver fallback
+    pkg_identity = resolve_technology_package(tech_name, getattr(tech, "version", None), tech)
+    if pkg_identity:
+        if not package_name:
+            package_name = pkg_identity.name
+        if not ecosystem:
+            ecosystem = pkg_identity.ecosystem
+
     has_package_identity = bool(ecosystem and package_name)
     has_cpe_identity = bool(cpe_vendor and cpe_product)
 
+    # Step 4 — Check whether any identity was resolved
     if not has_package_identity and not has_cpe_identity:
         return CorrelationEligibility(
             status=CorrelationEligibilityStatus.RESOLUTION_FAILED,
             technology_id=tech_id,
             technology_name=display_name,
             catalog_key=catalog_key,
+            package_identity=pkg_identity,
             reason="No valid package ecosystem or CPE identity could be resolved",
             confidence=getattr(tech, "confidence", 0),
         )
 
-    # ------------------------------------------------------------------
-    # Step 4 — Confidence gate
-    # ------------------------------------------------------------------
+    # Step 5 — Confidence gate
     confidence = getattr(tech, "confidence", 0)
     if confidence < CORRELATION_CONFIDENCE_THRESHOLD:
         return CorrelationEligibility(
@@ -310,6 +301,7 @@ def evaluate_correlation_eligibility(tech) -> CorrelationEligibility:
             technology_id=tech_id,
             technology_name=display_name,
             catalog_key=catalog_key,
+            package_identity=pkg_identity,
             package_name=package_name,
             ecosystem=ecosystem,
             cpe_vendor=cpe_vendor,
@@ -318,15 +310,10 @@ def evaluate_correlation_eligibility(tech) -> CorrelationEligibility:
             confidence=confidence,
         )
 
-    # ------------------------------------------------------------------
-    # Step 5 — Version check
-    # ------------------------------------------------------------------
+    # Step 6 — Version Check & Provider Coverage
     version = getattr(tech, "version", None)
-    version_available = bool(version)
+    version_available = bool(version and str(version).strip() and str(version).strip().lower() != "unknown")
 
-    # ------------------------------------------------------------------
-    # Step 6 — Provider coverage
-    # ------------------------------------------------------------------
     caps = _determine_provider_capabilities(ecosystem, package_name, cpe_vendor, cpe_product)
     intel_sources = [c.provider for c in caps if c.supported]
     lookup_strategy = _lookup_strategy_from_caps(caps)
@@ -337,12 +324,14 @@ def evaluate_correlation_eligibility(tech) -> CorrelationEligibility:
             technology_id=tech_id,
             technology_name=display_name,
             catalog_key=catalog_key,
+            package_identity=pkg_identity,
             package_name=package_name,
             ecosystem=ecosystem,
             cpe_vendor=cpe_vendor,
             cpe_product=cpe_product,
             reason="No vulnerability intelligence provider supports the resolved identity",
             confidence=confidence,
+            version_available=version_available,
         )
 
     # Determine final status
@@ -357,22 +346,25 @@ def evaluate_correlation_eligibility(tech) -> CorrelationEligibility:
     else:
         status = CorrelationEligibilityStatus.CORRELATABLE
 
-    # Override to VERSION_REQUIRED only if no version and strategy requires it
-    # For NVD, wildcard CPE can still match; for OSV, version is important
+    # Check version requirement
     needs_version = lookup_strategy in ("osv", "both")
     if needs_version and not version_available:
         status = CorrelationEligibilityStatus.VERSION_REQUIRED
+        reason = "Version required for vulnerability correlation"
+    else:
+        reason = f"{status.value}: {len(intel_sources)} intelligence sources available"
 
     return CorrelationEligibility(
         status=status,
         technology_id=tech_id,
         technology_name=display_name,
         catalog_key=catalog_key,
+        package_identity=pkg_identity,
         package_name=package_name,
         ecosystem=ecosystem,
         cpe_vendor=cpe_vendor,
         cpe_product=cpe_product,
-        reason=f"{status.value}: {len(intel_sources)} intelligence sources available",
+        reason=reason,
         lookup_strategy=lookup_strategy,
         coverage=coverage,
         version_required=needs_version,
@@ -404,10 +396,7 @@ def evaluate_all_eligibilities(technologies: list) -> Dict[str, CorrelationEligi
 
 def validate_technology_capabilities() -> List[str]:
     """Inspect ALL registered technology signatures and validate that
-    correlation claims are backed by at least one usable provider.
-
-    Returns a list of diagnostic messages. Empty list = all clean.
-    """
+    correlation claims are backed by at least one usable provider."""
     from pulse.website.signatures import SignatureRegistry
 
     diagnostics: List[str] = []
@@ -417,7 +406,6 @@ def validate_technology_capabilities() -> List[str]:
         if not sig.correlation_supported:
             continue
 
-        # Build a minimal mock fingerprint for evaluation
         mock = _MockFingerprint(
             name=sig.name,
             signature_id=sig.signature_id,
@@ -429,7 +417,7 @@ def validate_technology_capabilities() -> List[str]:
         )
         elig = evaluate_correlation_eligibility(mock)
 
-        if elig.status == CorrelationEligibilityStatus.RESOLUTION_FAILED:
+        if elig.status in (CorrelationEligibilityStatus.RESOLUTION_FAILED, CorrelationEligibilityStatus.CORRELATION_UNAVAILABLE):
             diagnostics.append(
                 f"\u2717 {sig.name} (sig:{sig.signature_id}) — marked correlatable but "
                 f"no usable provider: {elig.reason}"
@@ -440,20 +428,9 @@ def validate_technology_capabilities() -> List[str]:
                 f"{elig.reason}"
             )
         elif elig.status == CorrelationEligibilityStatus.PARTIALLY_CORRELATABLE:
-            missing = []
-            if not elig.ecosystem or not elig.package_name:
-                missing.append("package mapping")
-            if not elig.cpe_vendor or not elig.cpe_product:
-                missing.append("CPE mapping")
-            if missing:
-                diagnostics.append(
-                    f"\u26a0 {sig.name} (sig:{sig.signature_id}) — partial: missing "
-                    + ", ".join(missing)
-                )
-            else:
-                diagnostics.append(
-                    f"\u2713 {sig.name} (sig:{sig.signature_id}) — {elig.status.value}"
-                )
+            diagnostics.append(
+                f"\u2713 {sig.name} (sig:{sig.signature_id}) — {elig.status.value}"
+            )
         else:
             diagnostics.append(
                 f"\u2713 {sig.name} (sig:{sig.signature_id}) — {elig.status.value}"
@@ -461,10 +438,6 @@ def validate_technology_capabilities() -> List[str]:
 
     return diagnostics
 
-
-# ---------------------------------------------------------------------------
-# Mock fingerprint for validator
-# ---------------------------------------------------------------------------
 
 class _MockFingerprint:
     """Lightweight stand-in for TechnologyFingerprint used by the validator."""
