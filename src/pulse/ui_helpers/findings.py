@@ -44,9 +44,9 @@ def build_attack_path(table: Table, finding: VulnerabilityFinding):
             tactic_str = f" [dim](Tactic: {tech.tactic})[/dim]" if (AppState.DEBUG_MODE and getattr(tech, "tactic", None)) else ""
             path_lines.append("  ↓")
             path_lines.append(f"[bold red]{tech.technique_id}[/bold red] — {tech_name}{tactic_str}")
-        table.add_row("", "\\n".join(path_lines))
+        table.add_row("", "\n".join(path_lines))
     else:
-        table.add_row("", f"[bold red]{finding.cve_id}[/bold red]\\n  ↓\\n[dim]No ATT&CK mapping available[/dim]")
+        table.add_row("", f"[bold red]{finding.cve_id}[/bold red]\n  ↓\n[dim]No ATT&CK mapping available[/dim]")
 
 def build_upgrade_analysis(table: Table, pkg, rec):
     table.add_row("", "")

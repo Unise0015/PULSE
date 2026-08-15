@@ -31,10 +31,10 @@ class PackageService:
                 enrich_result = pipeline.run(packages, progress=progress)
             else:
                 # Normal mode: single spinner, no individual stage noise
-                task = progress.add_task("[yellow]Scanning...[/yellow]", total=None)
+                task = progress.add_task("[yellow]Scanning package...[/yellow]", total=None)
                 pipeline = EnrichmentPipeline()
                 enrich_result = pipeline.run(packages, progress=None)
-                progress.update(task, completed=1, description="[green]Scan completed[/green]")
+                pass
             findings = enrich_result.findings
         
         attack_surface_score = EnrichmentPipeline.calculate_attack_surface_score(findings)

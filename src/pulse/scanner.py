@@ -57,8 +57,6 @@ class ScannerOrchestrator:
 
 
     def lookup_cve(self, console, cve_id: str):
-        console.print(f"\n[bold]Looking up details for {cve_id}...[/bold]")
-        
         # Construct a dummy finding to pass through NVD/EPSS/KEV providers.
         dummy_pkg = PackageInfo(name="unknown", version="unknown", ecosystem="unknown")
         finding = VulnerabilityFinding(
@@ -81,31 +79,21 @@ class ScannerOrchestrator:
         with Progress(
             SpinnerColumn(spinner_name="line"),
             TextColumn("[progress.description]{task.description}"),
-            transient=False,
+            transient=True,
         ) as progress:
-            task = progress.add_task("[yellow]Fetching from NVD...[/yellow]", total=None)
+            task = progress.add_task("[yellow]Loading vulnerability details...[/yellow]", total=None)
             nvd_provider = NVDProvider()
             nvd_provider.enrich_findings([finding])
-            
-            progress.update(task, description="[yellow]Fetching from EPSS...[/yellow]")
             epss_provider = EPSSProvider()
             epss_provider.enrich_findings([finding])
-            
-            progress.update(task, description="[yellow]Mapping MITRE ATT&CK...[/yellow]")
             threat_mapper = ThreatMapper()
             threat_mapper.enrich_findings([finding])
-            
-            progress.update(task, description="[yellow]Checking KEV...[/yellow]")
             kev_provider = KEVProvider()
             kev_provider.enrich_findings([finding])
-            
-            # Enrich with Exploit Intelligence
             ExploitIntelligenceAnalyzer.enrich_findings([finding])
             
-            progress.update(task, completed=1, description="[green]Lookup completed[/green]")
-            
         if not finding.description:
-            console.print(f"[red]Could not find details for {cve_id} in NVD.[/red]")
+            console.print(f"[yellow]⚠ Unable to retrieve details for {cve_id}.[/yellow]")
             return
 
         text = Text()

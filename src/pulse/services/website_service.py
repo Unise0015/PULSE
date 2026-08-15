@@ -40,19 +40,16 @@ class WebsiteService:
     """Orchestrates website scanning and canonical technology package correlation."""
 
     def run(self, console, url: str) -> ScanResult:
-        console.print(f"\n[bold]Fingerprinting Website:[/bold] {url}")
-        
         start_time = time.time()
         analyzer = WebsiteFingerprintAnalyzer()
         
         with Progress(
             SpinnerColumn(spinner_name="line"),
             TextColumn("[progress.description]{task.description}"),
-            transient=False,
+            transient=True,
         ) as progress:
-            task = progress.add_task("[yellow]Analyzing headers and DOM...[/yellow]", total=None)
+            task = progress.add_task("[yellow]Detecting website technologies...[/yellow]", total=None)
             assessment = analyzer.scan(url)
-            progress.update(task, completed=1, description="[green]Website analysis completed[/green]")
             
         duration = round(time.time() - start_time, 2)
         

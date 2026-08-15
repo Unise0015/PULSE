@@ -48,8 +48,7 @@ class ScanService:
     
     def run(self, console) -> ScanResult:
         from pulse.state import AppState
-        console.print("\n[bold]Auto-Discovering Packages...[/bold]")
-        
+                
         start_time = time.time()
         
         all_packages = []
@@ -65,7 +64,7 @@ class ScanService:
             transient=True,
         ) as progress:
             # 1. Discovering packages
-            task1 = progress.add_task("[yellow]Discovering packages...[/yellow]", total=None)
+            task1 = progress.add_task("[yellow]Scanning packages...[/yellow]", total=None)
             
             from pulse.config import get_setting
             cfg = ScannerConfig(
@@ -101,7 +100,7 @@ class ScanService:
                         errors=[f"Plugin execution crashed: {e}"]
                     )
                     
-            progress.update(task1, completed=1, description=f"[green]Discovered[/green] {len(all_packages)} packages")
+            pass
 
             # 2. Run Enrichment Pipeline
             pipeline = EnrichmentPipeline()

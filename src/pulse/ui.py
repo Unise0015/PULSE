@@ -36,6 +36,17 @@ def format_kev(finding: VulnerabilityFinding) -> str:
         return "[bold red]ACTIVE EXPLOIT[/bold red]"
     return "[dim]No[/dim]"
 
+def clean_display_text(value: str) -> str:
+    """Normalize text before displaying it in the CLI presentation layer.
+    
+    Safely normalizes raw literal escape sequences like '\\n', '\\r\\n' to real newlines
+    without modifying serialized JSON, stored DB items, or API payloads.
+    """
+    if not value or not isinstance(value, str):
+        return ""
+    return str(value).replace("\\r\\n", "\n").replace("\\n", "\n").replace("\r\n", "\n")
+
+
 
 def get_recommended_command(pkg_name: str, ecosystem: str) -> str:
     """Returns the full upgrade-to-latest command."""
@@ -1334,7 +1345,8 @@ def render_cve_details(console, finding: VulnerabilityFinding) -> None:
     # 5. Description & References
     main_table.add_row("", "")
     main_table.add_row("[bold yellow]Description & References[/bold yellow]", "────────────────────────────────────────")
-    desc_wrapped = textwrap.fill(finding.description or finding.summary or "No description provided.", width=70)
+    raw_desc = clean_display_text(finding.description or finding.summary or "No description provided.")
+    desc_wrapped = textwrap.fill(raw_desc, width=70)
     main_table.add_row("Description", desc_wrapped)
 
     refs = getattr(finding, "references", None) or ([finding.reference_url] if getattr(finding, "reference_url", None) else [])

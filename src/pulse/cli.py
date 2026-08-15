@@ -178,7 +178,6 @@ def scan_single_package_menu():
             if result.provider is None:
                 console.print("[yellow]⚠ Vulnerability intelligence unavailable for this ecosystem.[/yellow]")
                 
-            console.print("\n[cyan]Scanning...[/cyan]")
             break
             
         # Ambiguous
@@ -213,8 +212,7 @@ def scan_single_package_menu():
     target_id = f"{result.provider.manifest.ecosystem}:{name.lower()}"
     
     if is_latest_lookup:
-        console.print("\n[bold]Scanning latest available release...[/bold]")
-    orchestrator = ScannerOrchestrator()
+            orchestrator = ScannerOrchestrator()
     scan_result = orchestrator.run_targeted_scan(console, [pkg], target_type="package", target_id=target_id)
     AppState.LAST_SCAN = scan_result
     post_scan_render(console, scan_result)
