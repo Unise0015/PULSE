@@ -1,86 +1,79 @@
-# PULSE Architecture & Component Design
+# PULSE System Architecture & Component Design
 
-PULSE CVE Scanner CLI is built around a modular, multi-tier pipeline designed for speed, resilience, and actionable security intelligence.
+PULSE (Package & Unified Lifecycle Security Engine) is an enterprise-grade vulnerability intelligence and attack surface analysis platform. It features a decoupled, modular architecture designed for high throughput, local offline resilience, and actionable remediation insights.
 
 ---
 
-## High-Level Architecture Diagram
+## 1. High-Level Architecture
 
-```mermaid
-graph TD
-    subgraph Discovery Layer
-        Py[Python Discoverer]
-        Node[Node Discoverer]
-        Multi[Multi-Ecosystem Discoverer]
-    end
-
-    subgraph Orchestration & Detection
-        Orch[Scanner Orchestrator]
-        RegDet[Registry & Ecosystem Detector]
-    end
-
-    subgraph Threat Intelligence Pipeline
-        OSV[OSV Provider]
-        NVD[NVD Provider]
-        EPSS[EPSS Enrichment]
-        KEV[CISA KEV Enrichment]
-        ATTACK[MITRE ATT&CK Mapper]
-        CWE[CWE Registry Catalog]
-    end
-    
-    subgraph Decision & Remediation Engine
-        Risk[Risk Heat Calculator]
-        Policy[ScanPolicy Engine]
-        Verif[Version Intelligence & Remediation]
-    end
-
-    subgraph History & Reporting
-        Hist[SQLite History Service]
-        Resolver[ReportPathResolver]
-        Report[Exporters: HTML / JSON / MD / CSV / SARIF]
-    end
-
-    Py --> Orch
-    Node --> Orch
-    Multi --> Orch
-
-    Orch --> RegDet
-    RegDet --> OSV
-    OSV --> NVD
-    NVD --> EPSS
-    EPSS --> KEV
-    KEV --> ATTACK
-    ATTACK --> CWE
-    
-    CWE --> Risk
-    Risk --> Policy
-    Policy --> Verif
-    Verif --> Hist
-    Hist --> Resolver
-    Resolver --> Report
+```
+                       ┌────────────────────────────────────────────────────────┐
+                       │                       PULSE CLI                        │
+                       │             (Interactive TUI & CLI Runner)             │
+                       └───────────────┬────────────────────────┬───────────────┘
+                                       │                        │
+                 ┌─────────────────────┴──────────┐  ┌──────────┴─────────────────────┐
+                 │       Package Discovery        │  │      Website Fingerprinting    │
+                 │   14+ Ecosystems & Lockfiles   │  │   3,000+ Declarative Signatures│
+                 └─────────────────────┬──────────┘  └──────────┬─────────────────────┘
+                                       │                        │
+                                       └───────────┬────────────┘
+                                                   ▼
+                                ┌──────────────────────────────────────┐
+                                │     Canonical Package Resolution     │
+                                │   (Identity Mapping & Registry API)  │
+                                └──────────────────┬───────────────────┘
+                                                   ▼
+                                ┌──────────────────────────────────────┐
+                                │       10-Stage Threat Pipeline       │
+                                │  OSV • NVD • EPSS • KEV • ATT&CK • PoC│
+                                └──────────────────┬───────────────────┘
+                                                   ▼
+                                ┌──────────────────────────────────────┐
+                                │   Risk Heat Scoring (0 - 100)        │
+                                │   & Safe Upgrade Remediation Engine  │
+                                └──────────────────┬───────────────────┘
+                                                   ▼
+                                ┌──────────────────────────────────────┐
+                                │     History, SQLite & Exporters      │
+                                │   HTML • SARIF • CycloneDX • JSON    │
+                                └──────────────────────────────────────┘
 ```
 
 ---
 
-## Core Pipeline Subsystems
+## 2. Core Subsystems
 
-### 1. Ecosystem Discovery & Detection (`scanner.py`, `registry_detector.py`)
-- Discovers installed packages or project manifests across Python, Node.js, Rust (Cargo), Go, Ruby, PHP (Composer), and Java (Maven).
-- Disambiguates canonical package identities using ecosystem keys (`pypi:django`, `npm:react`).
+### 1. Discovery & Ecosystem Layer (`pulse.ecosystems`)
+- Discovers installed packages and project manifests across 14+ package ecosystems: Python (pip), Node.js (npm), Rust (Cargo), Go (Go Modules), Ruby (RubyGems), PHP (Composer), Java (Maven), .NET (NuGet), Dart (Pub), Elixir (Hex), C/C++ (Conan), Swift (SwiftPM), GitHub Actions, and Docker/Containers.
+- Standardized plugin interface (`EcosystemPlugin`) with dependency topological sorting.
 
-### 2. Threat Intelligence Pipeline (`enrichment_pipeline.py`, `threat_intel/`, `cwe_registry.py`)
-- Sequentially enriches findings across OSV, NVD, EPSS, CISA KEV, MITRE ATT&CK, and CWE Registry.
-- Maintains local SQLite caching (`osv_cache`, `nvd_cache`, `threat_intel_cache`) to guarantee offline scanning resilience.
+### 2. Declarative Web Intelligence Engine (`pulse.website`)
+- Evaluates 3,000+ technology signatures across 22 domain packs.
+- Pre-filtered `SignatureIndex` ensures evaluation completes in under 15 ms.
+- Favicon MurmurHash3 (MMH3) fingerprinting for infrastructure recognition.
+- Evaluates HTTP security headers (HSTS, CSP, X-Frame-Options, etc.).
+- Resolves detected technologies into canonical `PackageInfo` models.
 
-### 3. ScanPolicy & Risk Heat Score (`policy.py`, `risk_engine.py`)
-- **ScanPolicy** acts as the single source of truth for blocking vs non-blocking findings.
-- Calculates **Risk Heat Score** combining CVSS, EPSS 30-day exploit probability, and KEV active exploitation flags.
+### 3. Vulnerability Intelligence Pipeline (`pulse.vulnerability`)
+- **OSV Provider:** Batched queries to Google OSV database for package-specific advisory records and commit ranges.
+- **NVD Provider:** Queries NIST NVD 2.0 API with CPE 2.3 criteria to retrieve CVSS v3.1 / v2 base scores, vector strings, and CWE weaknesses.
+- **EPSS Provider:** FIRST.org Exploit Prediction Scoring System (30-day weaponization probability).
+- **CISA KEV Catalog:** Local high-speed lookup against known actively exploited vulnerabilities.
+- **MITRE ATT&CK Mapping:** Maps CWE weaknesses to adversarial tactics and techniques.
+- **Exploit Intelligence:** Detects proof-of-concept availability and weaponization maturity.
 
-### 4. Version Intelligence & Verified Remediation (`version_intelligence/`, `command_generator.py`)
-- Evaluates candidate upgrade versions against advisory ranges to reject vulnerable candidates.
-- Generates exact version pinning upgrade commands (`pip install Django==6.1`).
+### 4. Scoring & Attack Path Analysis (`pulse.scoring`, `pulse.attack_path`)
+- **Risk Heat Score (0–100):** Weighted risk formula reflecting actual threat probability.
+- **Attack Surface Score:** Normalized risk aggregate across an entire scan target.
+- **Attack Path Synthesis:** Automatically correlates vulnerability chains and exposure vectors.
 
-### 5. Centralized Report Path Resolver & Exporters (`path_resolver.py`, `reporter.py`, `report_service.py`)
-- **ReportPathResolver** resolves target directories using strict precedence (`explicit_path` $\rightarrow$ `REPORT_CUSTOM_DIR` $\rightarrow$ `~/Documents/PULSE Reports/`).
-- Appends date and time timestamps (`report_YYYYMMDD_HHMMSS.html`) to prevent accidental overwrites.
-- Supports HTML, JSON (Schema 2.0), Markdown, CSV, SARIF, and CycloneDX SBOM formats.
+### 5. Verified Safe Upgrade Engine (`pulse.vulnerability.version_intelligence`)
+- Compares installed versions against advisory boundaries.
+- Recommends minimum safe non-vulnerable versions to minimize breaking changes.
+- Analyzes breaking change risk (*Low*, *Medium*, *High*) using SemVer deltas.
+- Verifies upgrade candidate safety against vulnerability databases before suggesting.
+
+### 6. History & Reporting (`pulse.history`, `pulse.reporting`)
+- SQLite-backed history tracking scans, posture deltas (new vs remediated CVEs), and report artifacts.
+- Multi-format exporters: Interactive HTML Dashboard, SARIF 2.1.0, CycloneDX 1.4 SBOM, JSON Schema 2.0, and Markdown.\n

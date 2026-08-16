@@ -1,36 +1,15 @@
-# CycloneDX SBOM Export
+# SBOM & Enterprise Compliance Export
 
-The CVE Scanner provides native support for generating Software Bill of Materials (SBOM) using the industry-standard **CycloneDX v1.4 JSON format**.
+PULSE generates standardized Software Bill of Materials (SBOM) and CI/CD security results in industry-standard formats.
 
-This export capability is specifically designed to provide a threat-enriched inventory. It maps discovered packages to valid Package URLs (PURLs) and integrates directly with the scanner’s vulnerability intelligence pipeline.
+---
 
-## Threat Context & Security Enrichment
+## 1. Supported Export Standards
 
-Unlike a standard dependency scanner that only lists components, the CVE Scanner enriches the CycloneDX SBOM with advanced cybersecurity metrics directly inside the JSON:
-
-### Component Enrichment
-For every vulnerable component, the following custom `properties` are appended:
-- `cve_scanner.attack_techniques`: The MITRE ATT&CK technique IDs (e.g., `T1190,T1059`).
-- `cve_scanner.attack_tactics`: The MITRE tactics (e.g., `Initial Access,Execution`).
-- `cve_scanner.kev_match`: A boolean string (`true`) indicating if the component has a vulnerability currently listed in the CISA Known Exploited Vulnerabilities catalog.
-
-### Native Vulnerabilities Array
-The exporter utilizes the CycloneDX `vulnerabilities` array to document risks associated with the components:
-- Native CVSS scores, severities, and vector tracking.
-- Native CWE mapping (e.g., `[89]`).
-- Custom `properties` for EPSS score (`cve_scanner.epss_score`) and proprietary risk heat score (`cve_scanner.risk_heat_score`).
-
-## How to Export
-
-1. Run a scan against your environment or a specific manifest file.
-2. Once the scan completes and the post-scan menu is presented, select **Export Report**.
-3. Choose **Export SBOM (CycloneDX)** from the format list.
-4. The scanner will generate a fully compliant SBOM and save it to:
-   `artifacts/sbom.json`
-
-## Integration
-
-The generated `sbom.json` can be directly ingested into:
-- **Dependency-Track** for continuous SBOM analysis.
-- **DefectDojo** for vulnerability management.
-- Custom DevSecOps pipelines for policy enforcement based on the embedded threat properties (like KEV matches or specific ATT&CK techniques).
+| Format | Specification | Standard Use Case |
+| :--- | :--- | :--- |
+| **CycloneDX SBOM** | CycloneDX v1.4 (JSON / XML) | Software supply-chain compliance, dependency inventory, and Package URLs (PURLs). |
+| **SARIF** | SARIF v2.1.0 (OASIS Standard) | GitHub Code Scanning alerts, GitLab Security Dashboards, and CI/CD pipelines. |
+| **JSON Schema 2.0** | PULSE Structured Schema | Automated ingestion into SIEMs, SOAR platforms, and data lakes. |
+| **HTML Dashboard** | Self-contained SPA | Executive security reporting, interactive graphs, and remediation reviews. |
+| **Markdown / CSV** | GFM / CSV Standard | Pull request comments, issue trackers, and audit spreadsheets. |\n

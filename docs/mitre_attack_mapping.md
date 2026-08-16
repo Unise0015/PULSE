@@ -1,46 +1,18 @@
-# MITRE ATT&CK Threat Mapping
+# MITRE ATT&CK Enterprise Matrix Mapping
 
-The CVE Scanner provides automatic translation of vulnerabilities (via CWEs) directly into **MITRE ATT&CK** techniques. This bridges the gap between software vulnerability management and threat intelligence, allowing security analysts to understand *how* a specific vulnerability could be exploited in the wild.
+PULSE integrates the MITRE ATT&CK framework to translate Common Weakness Enumerations (CWEs) into actionable adversary Tactics, Techniques, and Procedures (TTPs).
 
-## Architecture
+---
 
-The Threat Mapping module uses a local, lightweight static dataset (`src/cve_scanner/data/cwe_attack_mapping.json`). By avoiding an external API call, the scanner maintains high performance and offline capability. 
+## 1. CWE to ATT&CK Technique Correlation
 
-The flow is as follows:
-1. `NVDProvider` pulls the primary `CWE-ID` for the CVE.
-2. `ThreatMapper` intercepts the finding in the pipeline.
-3. The CWE is looked up in the JSON dataset.
-4. Corresponding `AttackTechnique` models are attached to the finding.
-
-## Current Covered CWEs
-
-For the initial release, the following critical and common CWEs are mapped:
-* **CWE-79** (Cross-site Scripting)
-* **CWE-89** (SQL Injection)
-* **CWE-22** (Path Traversal)
-* **CWE-78** (OS Command Injection)
-* **CWE-94** (Code Injection)
-* **CWE-287** (Authentication Bypass)
-* **CWE-434** (Unrestricted File Upload)
-* **CWE-502** (Deserialization)
-* **CWE-352** (CSRF)
-* **CWE-918** (SSRF)
-
-## Extending the Mapping
-
-To add new techniques or map new CWEs, simply update `src/cve_scanner/data/cwe_attack_mapping.json`.
-
-```json
-{
-  "CWE-XXX": [
-    {
-      "technique_id": "TXXXX",
-      "technique_name": "Technique Name",
-      "tactic": "Tactic Name",
-      "confidence": "High"
-    }
-  ]
-}
-```
-
-The application will automatically load the new mappings on the next scan.
+| CWE ID | Common Weakness | MITRE ATT&CK Technique | Tactic |
+| :--- | :--- | :--- | :--- |
+| **CWE-89** | SQL Injection | **T1190** – Exploit Public-Facing Application | Initial Access |
+| **CWE-78** | OS Command Injection | **T1059** – Command and Scripting Interpreter | Execution |
+| **CWE-79** | Cross-Site Scripting (XSS) | **T1189** – Drive-by Compromise | Initial Access |
+| **CWE-22** | Path Traversal | **T1083** – File and Directory Discovery | Discovery |
+| **CWE-502** | Deserialization of Untrusted Data | **T1059** – Command and Scripting Interpreter | Execution |
+| **CWE-287** | Improper Authentication | **T1078** – Valid Accounts | Defense Evasion |
+| **CWE-269** | Improper Privilege Management | **T1068** – Exploitation for Privilege Escalation | Privilege Escalation |
+| **CWE-918** | Server-Side Request Forgery (SSRF) | **T1190** – Exploit Public-Facing Application | Initial Access |\n

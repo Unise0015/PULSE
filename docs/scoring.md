@@ -1,47 +1,43 @@
-# Vulnerability Scoring
+# Risk Scoring & Prioritization Methodology
 
-CVE Scanner CLI uses a proprietary algorithm called the **Risk Heat Score** to rank and prioritize vulnerabilities.
+PULSE uses a weighted **Risk Heat Score** formula designed to reflect true exploitation likelihood and operational risk rather than theoretical CVSS severity alone.
 
-## The Risk Heat Score Formula
+---
 
-```text
-Risk Heat Score = (CVSS / 10 * 50) + (EPSS * 30) + (KEV * 20)
-```
+## 1. Risk Heat Score Formula (0–100)
 
-The maximum score is 100.
+The composite Risk Heat Score is calculated as follows:
 
-### Breakdown of the Components
+$$\text{Risk Heat Score} = (\text{CVSS Base} \times 5.0) + (\text{EPSS Probability} \times 30.0) + (\text{KEV Active Multiplier} \times 20.0) + \text{PoC Adjustment}$$
 
-1. **CVSS (Common Vulnerability Scoring System) [Max: 50 points]**
-   - **What it is:** The theoretical severity of a vulnerability based on its technical characteristics (e.g., network vector, privileges required, impact on confidentiality/integrity/availability).
-   - **Why it matters:** It provides the baseline technical impact.
-   - **Weight:** 50%. While important, CVSS alone is insufficient because it doesn't measure whether an exploit actually exists in the wild.
+### Component Weights:
+1. **CVSS Base Score (50% max contribution, up to 50 pts):**
+   - Measures theoretical technical impact and complexity.
+2. **EPSS Exploit Probability (30% max contribution, up to 30 pts):**
+   - Probability of active exploitation within 30 days (e.g. EPSS 0.85 = +25.5 pts).
+3. **CISA KEV Active Exploitation (20% contribution, 20 pts):**
+   - If the vulnerability is present in the CISA KEV catalog, 20 points are added immediately.
+4. **Exploit PoC Adjustment (up to +10 pts):**
+   - Functional / Weaponized public exploit: +10 pts.
+   - Proof of Concept (PoC) available: +5 pts.
 
-2. **EPSS (Exploit Prediction Scoring System) [Max: 30 points]**
-   - **What it is:** A data-driven probability (0 to 1) estimating the likelihood that a vulnerability will be exploited in the wild within the next 30 days.
-   - **Why it matters:** EPSS focuses on *threat* rather than just *vulnerability*. A High CVSS score with a 0.001% EPSS score is less of an immediate risk than a Medium CVSS score with an 85% EPSS score.
-   - **Weight:** 30%. This heavily biases the ranking towards vulnerabilities that attackers are actively researching or targeting.
+---
 
-3. **CISA KEV (Known Exploited Vulnerabilities) [Max: 20 points]**
-   - **What it is:** A catalog maintained by the U.S. Cybersecurity and Infrastructure Security Agency containing vulnerabilities that have been definitively proven to be exploited in the wild.
-   - **Why it matters:** If a CVE is on this list, it is no longer theoretical. It is an active, confirmed threat.
-   - **Weight:** 20% flat penalty.
+## 2. Severity Tiers
 
-## Why is Risk Heat Score better than CVSS alone?
+| Severity Tier | Score Range | Operational SLA / Recommendation |
+| :--- | :--- | :--- |
+| **CRITICAL** | **80.0 – 100.0** | Immediate remediation required. Active weaponization or critical CVSS + high EPSS. |
+| **HIGH** | **60.0 – 79.9** | Remediate in current sprint. Weaponized PoC or high severity flaw. |
+| **MEDIUM** | **30.0 – 59.9** | Schedule for standard maintenance cycle. Moderate impact without active exploitation. |
+| **LOW** | **0.0 – 29.9** | Informational / Low risk. Address during regular updates. |
 
-Traditional scanners sort by CVSS. The problem with this approach is "alert fatigue." A scan might return 50 "High" and "Critical" vulnerabilities, overwhelming developers. However, statistics show that only ~5% of published CVEs are ever actually exploited.
+---
 
-By combining CVSS (Technical Severity) with EPSS (Likelihood) and KEV (Confirmed Evidence), the **Risk Heat Score** answers the most important question in cybersecurity:
+## 3. Attack Surface Score
 
-> *"Which vulnerability should I fix first?"*
+The **Attack Surface Score** provides an aggregate risk index for an entire project or website target:
 
-## Attack Surface Score
+$$\text{Attack Surface Score} = \min\left(100, \sum_{i=1}^{n} \frac{\text{Finding Risk Score}_i}{\sqrt{n}} + \text{Exposure Penalty}\right)$$
 
-The overarching metric for a scan is the **Attack Surface Score**.
-
-```text
-Attack Surface Score = Average Risk Score + (KEV Matches * 10)
-```
-*(Capped at 100)*
-
-This score gives a high-level view of the environment's posture. A rising score indicates an accumulating technical debt of high-risk vulnerabilities.
+- **Exposure Penalty:** Added for publicly exposed web technologies without security headers or unpinned direct dependencies.\n

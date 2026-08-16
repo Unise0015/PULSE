@@ -1,47 +1,29 @@
-# Attack Path Analysis
+# Attack Path & Exposure Analysis
 
-The CVE Scanner now includes native **Attack Path Analysis**, mapping out the potential path an attacker could take to exploit discovered vulnerabilities. This elevates the scanner from providing a simple vulnerability inventory to offering actionable threat prioritization based on exposure scoring.
+PULSE models attacker movement and vulnerability exposure using MITRE ATT&CK technique chains and exposure scoring.
 
-## Methodology
+---
 
-The Attack Path Analysis engine processes vulnerabilities and constructs paths using existing platform intelligence. The path follows the structure:
-`Package ↓ CVE ↓ CWE ↓ MITRE ATT&CK Technique`
+## 1. Attack Path Scoring Formula
 
-### Exposure Scoring (Deterministic)
+Each vulnerability finding is scored for attack chain exploitability based on four key exposure vectors:
 
-Each attack path receives an **Exposure Score** (max 95), designed to strictly prioritize findings based on real-world exploitability indicators rather than raw theoretical severity.
+| Exposure Vector | Condition | Point Weight |
+| :--- | :--- | :--- |
+| **Active Exploitation** | Present in CISA KEV | **+40 points** |
+| **High Exploit Probability** | EPSS Probability > 0.50 | **+25 points** |
+| **Critical Technical Impact** | CVSS Base Score $\ge 9.0$ | **+20 points** |
+| **Adversarial TTP Available** | MITRE ATT&CK Technique mapped | **+10 points** |
 
-The model uses the following weights:
+---
 
-*   **KEV Match (+40)**: Highest weight. If CISA confirms active exploitation in the wild, the exposure is critical.
-*   **EPSS > 50% (+25)**: If the exploit prediction score is above 50%, there is a high probability of near-term exploitation.
-*   **CVSS Severity (Exclusive)**:
-    *   **CVSS ≥ 9 (+20)**: Critical base severity.
-    *   **CVSS ≥ 7 (+10)**: High base severity.
-*   **MITRE Mapping (+10)**: If the finding can be mapped to an actionable MITRE ATT&CK technique, the path is structurally defined.
+## 2. MITRE ATT&CK Technique Mapping
 
-By using *exclusive* scoring for CVSS, the platform ensures that raw severity metrics do not drown out more actionable indicators like KEV or EPSS.
+When a vulnerability is mapped to a CWE weakness, PULSE correlates it with enterprise attack chains:
 
-## Example Path
-
-```text
-Package: Django 3.2.0
-
-Path:
-CVE-2022-34265
-↓
-CWE-89
-↓
-T1190 Exploit Public-Facing Application
-
-Exposure Score: 95
 ```
-
-## JSON Export
-
-Users can export the prioritized attack paths directly into a structured JSON file via the post-scan **Export Report** menu (`Export Attack Paths (JSON)`). This export encapsulates all path elements, including extracted MITRE tactics, enabling future integrations.
-
-## Roadmap: M7.4+ Dependency Tree Expansion
-
-Currently, the Attack Path Analyzer focuses on package-level mapping. The planned M7.4 milestone will introduce full dependency graph resolution, expanding the path to include:
-`Root Project ↓ Transitive Dependency ↓ CVE ↓ CWE ↓ ATT&CK Technique`
+[Initial Access] ──────► [Execution / Privilege Escalation] ──────► [Impact / Exfiltration]
+      │                                    │                                    │
+  T1190: Exploit                    T1068: Exploitation                 T1499: Endpoint Denial
+  Public-Facing Application         for Privilege Escalation             of Service
+```\n

@@ -4,7 +4,7 @@
 [![Python Version](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Ecosystems](https://img.shields.io/badge/ecosystems-14+-brightgreen.svg)](#supported-package-ecosystems)
 [![Threat Intel](https://img.shields.io/badge/intel-OSV%20%7C%20NVD%20%7C%20EPSS%20%7C%20KEV%20%7C%20ATT%26CK-orange.svg)](#vulnerability-intelligence--threat-enrichment)
-[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)](#installation)
+[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-lightgrey.svg)](#installation)
 
 **PULSE** is a high-performance, unified vulnerability intelligence, supply-chain analysis, and attack surface management CLI. It combines **14+ package ecosystems**, **3,000+ declarative web technology signatures**, and a multi-source threat intelligence pipeline (OSV, NVD, EPSS, CISA KEV, MITRE ATT&CK) to provide contextual, actionable security insights and verified-safe upgrade guidance.
 
@@ -106,7 +106,7 @@
 - **Python 3.11+**
 - **pip** or **pipx**
 
-### Linux / macOS
+### Linux
 
 ```bash
 # Clone the repository
@@ -234,7 +234,7 @@ An NVD API key increases the NIST NVD rate limit from **5 requests** to **50 req
    - **Environment Variable:** Set `NVD_API_KEY=your_key_here` in `.env`
 
 ### Platform Configuration File Paths
-- **Linux / macOS:** `~/.config/pulse/.env`
+- **Linux:** `~/.config/pulse/.env`
 - **Windows:** `%APPDATA%\pulse\.env`
 
 ---
