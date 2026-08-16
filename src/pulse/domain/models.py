@@ -52,6 +52,10 @@ class VersionMetadata:
     source_timestamp: datetime
     recommendation: Optional[SecurityFixRecommendation] = None
 
+    @property
+    def latest_version(self) -> Optional[str]:
+        return self.latest_stable_version or self.latest_lts_version
+
 @dataclass
 class AttackTechnique:
     technique_id: str

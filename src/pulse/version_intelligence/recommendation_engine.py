@@ -48,7 +48,7 @@ def analyze_upgrade_recommendation(
 
     latest_stable = None
     if version_metadata:
-        latest_stable = version_metadata.latest_stable_version or version_metadata.latest_version
+        latest_stable = getattr(version_metadata, "latest_stable_version", None) or getattr(version_metadata, "latest_lts_version", None) or getattr(version_metadata, "latest_version", None)
 
     # EOL Status Classification
     curr_major = _parse_major(curr_ver)
