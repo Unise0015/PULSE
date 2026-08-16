@@ -847,26 +847,188 @@ def manage_keys_menu():
             console.print("[bold green]Key removed successfully![/bold green]")
 
 def help_menu():
-    console.print("\n[bold]Supported Ecosystems[/bold]")
-    console.print("  • Python (pip - requirements.txt / environment)")
-    console.print("  • Node.js (npm - package.json / package-lock.json)")
-    console.print("  • Rust (Cargo - Cargo.toml / Cargo.lock)")
-    console.print("  • Go (go.mod / go.sum)")
-    console.print("  • Ruby (Gemfile / Gemfile.lock)")
-    console.print("  • PHP (Composer - composer.json / composer.lock)")
-    console.print("  • Java (Maven - pom.xml)")
-    console.print("  • .NET (NuGet - csproj / packages.config)")
-    console.print("  • GitHub Actions (Workflows - .github/workflows/*.yml)")
-    console.print("\n[bold]Data Sources[/bold]")
-    console.print("  • OSV (Open Source Vulnerabilities)")
-    console.print("  • NVD (National Vulnerability Database)")
-    console.print("  • EPSS (Exploit Prediction Scoring System)")
-    console.print("  • CISA KEV (Known Exploited Vulnerabilities)")
-    console.print("\n[bold]Commands[/bold]")
-    console.print("  • Auto Discover: Scans current directory for dependencies")
-    console.print("  • Scan File: Scans a specific requirements.txt or package.json")
-    console.print("  • Lookup CVE: Fetch details for a specific CVE-ID")
-    console.print("  • Export Report: Save findings to HTML, JSON, CSV, or Markdown")
+    """Comprehensive, interactive Help & Documentation menu."""
+    from rich.panel import Panel
+    from rich.table import Table
+    from rich import box
+
+    while True:
+        choice = questionary.select(
+            "PULSE Help & Documentation:",
+            choices=[
+                "1. Full Overview & Capabilities",
+                "2. Supported Package Ecosystems (14+)",
+                "3. Vulnerability Intelligence & Scoring Pipeline",
+                "4. Website Technology & Vulnerability Correlation",
+                "5. Safe Upgrade Advisor & Remediation",
+                "6. CLI Flags & Subcommands Reference",
+                "Back to Main Menu"
+            ]
+        ).ask()
+
+        if not choice or choice == "Back to Main Menu":
+            break
+
+        if choice.startswith("1."):
+            overview_text = (
+                "[bold cyan]PULSE[/bold cyan] is a unified vulnerability intelligence and attack surface management CLI.\n\n"
+                "[bold yellow]Key Workflows:[/bold yellow]\n"
+                " • [bold white]Targeted Package Scan:[/bold white] Scan any package with auto-detection across 14+ ecosystems.\n"
+                " • [bold white]Auto-Discovery Scan:[/bold white] Detect and scan project manifest/lockfiles in the working directory.\n"
+                " • [bold white]File-Based Scan:[/bold white] Explicitly scan requirements.txt, package.json, Cargo.lock, etc.\n"
+                " • [bold white]Website Assessment:[/bold white] Declarative technology fingerprinting + canonical vulnerability correlation.\n"
+                " • [bold white]Direct CVE Lookup:[/bold white] Query enriched NVD, EPSS, KEV, and ATT&CK intelligence by CVE ID.\n"
+                " • [bold white]Remediation Advisor:[/bold white] Verified-safe upgrade candidate evaluation with breaking-change risk rating.\n"
+                " • [bold white]Multi-Format Reports:[/bold white] HTML Dashboard, JSON Schema 2.0, SARIF 2.1.0, Markdown, CSV, and CycloneDX SBOM."
+            )
+            console.print(Panel(
+                overview_text,
+                title="[bold cyan]PULSE — System Overview[/bold cyan]",
+                border_style="cyan",
+                box=box.ROUNDED,
+                expand=False
+            ))
+
+        elif choice.startswith("2."):
+            table = Table(
+                title="[bold cyan]Supported Package Ecosystems & File Formats[/bold cyan]",
+                box=box.ROUNDED,
+                border_style="blue",
+                show_lines=True,
+                expand=True
+            )
+            table.add_column("Ecosystem", style="bold cyan", width=18)
+            table.add_column("Registry", style="green", width=14)
+            table.add_column("Manifest / Lockfile Formats", style="white")
+            table.add_column("Detection Method", style="dim", width=20)
+
+            ecosystems_data = [
+                ("Python", "PyPI", "requirements.txt, Pipfile(.lock), poetry.lock, pyproject.toml, setup.py", "AST Parser + pip freeze"),
+                ("Node.js", "npm", "package.json, package-lock.json, yarn.lock, pnpm-lock.yaml", "JSON Parser + npm registry"),
+                ("Rust", "crates.io", "Cargo.toml, Cargo.lock", "TOML Parser + Cargo registry"),
+                ("Go", "Go Modules", "go.mod, go.sum", "Go Parser + Proxy API"),
+                ("Ruby", "RubyGems", "Gemfile, Gemfile.lock", "Gemfile Parser + Gem API"),
+                ("PHP", "Packagist", "composer.json, composer.lock", "JSON Parser + Packagist API"),
+                ("Java", "Maven Central", "pom.xml, build.gradle", "XML / Gradle Parser"),
+                (".NET / C#", "NuGet", "*.csproj, packages.config, paket.lock", "XML Parser + NuGet API"),
+                ("Dart / Flutter", "pub.dev", "pubspec.yaml, pubspec.lock", "YAML Parser + Pub API"),
+                ("Elixir", "Hex.pm", "mix.exs, mix.lock", "Hex Parser + API"),
+                ("C / C++", "Conan Center", "conanfile.txt, conanfile.py", "Conan Parser + Registry"),
+                ("Swift", "SwiftPM", "Package.swift, Package.resolved", "Swift Package Manifest Parser"),
+                ("GitHub Actions", "GitHub", ".github/workflows/*.yml, action.yml", "YAML Workflow Parser"),
+                ("Containers", "Docker / OCI", "Dockerfile, container image tags", "Dockerfile AST Parser")
+            ]
+
+            for eco, reg, files, method in ecosystems_data:
+                table.add_row(eco, reg, files, method)
+
+            console.print(table)
+
+        elif choice.startswith("3."):
+            table = Table(
+                title="[bold cyan]Vulnerability Intelligence & Threat Enrichment Pipeline[/bold cyan]",
+                box=box.ROUNDED,
+                border_style="magenta",
+                show_lines=True,
+                expand=True
+            )
+            table.add_column("Source / Metric", style="bold magenta", width=22)
+            table.add_column("Provider / Authority", style="cyan", width=20)
+            table.add_column("Description & Impact on Risk Score", style="white")
+
+            intel_data = [
+                ("OSV Database", "Google OSV API", "Open source vulnerability database mapping packages to advisory records & commit ranges."),
+                ("NVD & CPE Matching", "NIST NVD 2.0 API", "Official CVSS v3.1 base score, severity (Low/Med/High/Crit), CWE classification, and vectors."),
+                ("EPSS Percentile", "FIRST EPSS API", "Exploit Prediction Scoring System: empirical probability of active exploitation in the next 30 days."),
+                ("CISA KEV Catalog", "CISA KEV Feed", "Known Exploited Vulnerabilities catalog flagging active in-the-wild weaponization."),
+                ("MITRE ATT&CK", "MITRE Enterprise Matrix", "Maps vulnerabilities to adversarial Tactics, Techniques, and Procedures (TTPs) and attack paths."),
+                ("Exploit Intelligence", "PoC Repositories", "Detects public proof-of-concept exploits, exploit maturity, and weaponization status."),
+                ("Risk Heat Score (0-100)", "PULSE Weighted Engine", "Composite risk formula: Base CVSS + EPSS Probability + KEV Multiplier + PoC Availability + Exposure.")
+            ]
+
+            for src, prov, desc in intel_data:
+                table.add_row(src, prov, desc)
+
+            console.print(table)
+
+        elif choice.startswith("4."):
+            web_text = (
+                "[bold cyan]Website Technology Assessment & Canonical Correlation[/bold cyan]\n\n"
+                "[bold yellow]1. Multi-Signal Detection Engine:[/bold yellow]\n"
+                " • [bold white]HTTP Headers:[/bold white] Server, X-Powered-By, Set-Cookie, Security Headers (HSTS, CSP, X-Frame-Options, etc.)\n"
+                " • [bold white]DOM & HTML Patterns:[/bold white] Meta generators, inline scripts, link tags, framework signatures\n"
+                " • [bold white]Script Signatures:[/bold white] Library file names, bundles, inline version signatures (e.g. jQuery, React, Vue, Bootstrap)\n\n"
+                "[bold yellow]2. Canonical Package Identity Resolution:[/bold yellow]\n"
+                " • Resolved web technologies are mapped to canonical [bold green]PackageIdentity[/bold green] records.\n"
+                " • Web packages participate in the exact same [bold green]EnrichmentPipeline[/bold green] as standalone scans.\n"
+                " • Guarantees 100% vulnerability intelligence parity (OSV, NVD, EPSS, KEV, ATT&CK, Risk Heat Score).\n\n"
+                "[bold yellow]3. Distinct Security States:[/bold yellow]\n"
+                " • [bold red]Vulnerable:[/bold red] Known security advisories correlated.\n"
+                " • [bold green]Clean:[/bold green] Canonical package correlated, no known advisories.\n"
+                " • [bold yellow]Version Required:[/bold yellow] Technology detected without precise version.\n"
+                " • [bold cyan]Detection Only:[/bold cyan] Non-software infrastructure or non-correlatable signal.\n"
+                " • [bold white]Unavailable:[/bold white] Provider intelligence offline or unreachable."
+            )
+            console.print(Panel(
+                web_text,
+                title="[bold cyan]Website Technology Assessment[/bold cyan]",
+                border_style="cyan",
+                box=box.ROUNDED,
+                expand=False
+            ))
+
+        elif choice.startswith("5."):
+            remed_text = (
+                "[bold cyan]Security Advisor & Safe Upgrade Engine[/bold cyan]\n\n"
+                "[bold yellow]Recommendation Methodology:[/bold yellow]\n"
+                " • [bold white]Minimum Safe Version:[/bold white] Finds the lowest non-vulnerable version to minimize breaking changes.\n"
+                " • [bold white]Latest Stable Version:[/bold white] Identifies the newest available stable upstream release.\n"
+                " • [bold white]Breaking Change Analysis:[/bold white] SemVer delta evaluation (Patch vs Minor vs Major bump).\n"
+                " • [bold white]Migration Risk Rating:[/bold white] Categorized as [bold green]LOW[/bold green] (patch), [bold yellow]MEDIUM[/bold yellow] (minor), or [bold red]HIGH[/bold red] (major).\n"
+                " • [bold white]Vulnerability Verification:[/bold white] Proactively verifies candidate target versions against vulnerability databases.\n"
+                " • [bold white]Actionable Commands:[/bold white] Generates exact copy-paste update commands per package ecosystem."
+            )
+            console.print(Panel(
+                remed_text,
+                title="[bold cyan]Safe Upgrade Advisor[/bold cyan]",
+                border_style="green",
+                box=box.ROUNDED,
+                expand=False
+            ))
+
+        elif choice.startswith("6."):
+            table = Table(
+                title="[bold cyan]CLI Flags & Subcommands Reference[/bold cyan]",
+                box=box.ROUNDED,
+                border_style="yellow",
+                show_lines=True,
+                expand=True
+            )
+            table.add_column("Command / Flag", style="bold yellow", width=24)
+            table.add_column("Type", style="cyan", width=12)
+            table.add_column("Description", style="white")
+
+            cli_ref = [
+                ("pulse", "Command", "Launch interactive terminal user interface (TUI)."),
+                ("pulse --offline", "Flag", "Run purely from local caches; disable live registry/OSV/NVD queries."),
+                ("pulse --verbose", "Flag", "Display verbose scoring breakdowns and candidate evaluations."),
+                ("pulse --compact", "Flag", "Display high-level executive summary only."),
+                ("pulse --attack-paths", "Flag", "Automatically render MITRE ATT&CK technique chains."),
+                ("pulse --debug", "Flag", "Enable full debug logging and diagnostic stack traces."),
+                ("pulse --no-banner", "Flag", "Suppress ASCII header banner."),
+                ("pulse config list", "Subcommand", "List all persistent configuration settings with defaults."),
+                ("pulse config get <KEY>", "Subcommand", "Get value of a specific setting (e.g. NVD_API_KEY)."),
+                ("pulse config set <K> <V>", "Subcommand", "Update a specific configuration setting."),
+                ("pulse config edit", "Subcommand", "Launch interactive configuration settings editor."),
+                ("pulse doctor", "Subcommand", "Execute system environment and connectivity health diagnostics."),
+                ("pulse doctor --json", "Subcommand", "Export system diagnostic health report as JSON."),
+                ("pulse docs config", "Subcommand", "Generate Markdown configuration documentation to file.")
+            ]
+
+            for cmd, typ, desc in cli_ref:
+                table.add_row(cmd, typ, desc)
+
+            console.print(table)
 
 def startup_health_check():
     from pulse.banner import UNICODE_SUPPORTED
@@ -1128,7 +1290,27 @@ def handle_docs_cli(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="PULSE CLI")
+    parser = argparse.ArgumentParser(
+        prog="pulse",
+        description="PULSE — Unified Package & Website Vulnerability Intelligence CLI",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  pulse                                 # Launch interactive TUI
+  pulse --offline                       # Launch in offline mode (local caches only)
+  pulse --verbose                       # Launch with verbose score details
+  pulse --compact                       # Launch with executive compact summary
+  pulse --attack-paths                  # Enable automatic attack path visualization
+  pulse --debug                         # Enable debug diagnostic traces
+  pulse doctor                          # Run system diagnostic checks
+  pulse doctor --json                   # Output diagnostics in JSON format
+  pulse config list                     # Display current configuration settings
+  pulse config get NVD_API_KEY          # Get specific configuration setting
+  pulse config set NVD_API_KEY <key>    # Set configuration setting
+  pulse config edit                     # Interactive configuration editor
+  pulse docs config                     # Generate configuration markdown documentation
+        """
+    )
     parser.add_argument("--no-banner", action="store_true", help="Skip ASCII banner")
     parser.add_argument("--offline", action="store_true", help="Disable smart online detection")
     parser.add_argument("--verbose", action="store_true", help="Show verbose output including resolution scores")
