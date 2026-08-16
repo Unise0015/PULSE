@@ -214,11 +214,10 @@ class WebsiteFingerprintAnalyzer:
                 script_urls=script_srcs
             )
             for dfp in decl_fingerprints:
-                cpe_cands = []
-                cpe_val = getattr(dfp, "cpe", None)
-                if cpe_val:
-                    cpe_cands.append(CPECandidate(cpe=cpe_val, confidence=dfp.confidence))
-                dfp.cpe_candidates = cpe_cands
+                if not dfp.cpe_candidates:
+                    cpe_val = getattr(dfp, "cpe", None)
+                    if cpe_val:
+                        dfp.cpe_candidates = [CPECandidate(cpe=cpe_val, confidence=dfp.confidence)]
                 dfp.confidence_band = get_confidence_band(dfp.confidence)
                 detected_fingerprints.append(dfp)
         except Exception as e:
@@ -376,18 +375,70 @@ class WebsiteFingerprintAnalyzer:
 
     def _deduplicate(self, techs: List[TechnologyFingerprint]) -> List[TechnologyFingerprint]:
         """Deduplicate technologies by name, keeping highest confidence/version."""
+        alias_map = {
+            "apache": "Apache HTTP Server",
+            "apache http server": "Apache HTTP Server",
+            "tailwind": "Tailwind CSS",
+            "tailwindcss": "Tailwind CSS",
+            "tailwind css": "Tailwind CSS",
+            "next": "Next.js",
+            "nextjs": "Next.js",
+            "next.js": "Next.js",
+            "nuxt": "Nuxt.js",
+            "nuxtjs": "Nuxt.js",
+            "nuxt.js": "Nuxt.js",
+            "vue": "Vue.js",
+            "vuejs": "Vue.js",
+            "vue.js": "Vue.js",
+            "react": "React",
+            "reactjs": "React",
+            "angular": "Angular",
+            "angularjs": "Angular",
+            "jquery": "jQuery",
+            "jquery-migrate": "jQuery Migrate",
+            "jquery migrate": "jQuery Migrate",
+        }
+
         best: Dict[str, TechnologyFingerprint] = {}
         for t in techs:
-            name = t.name.lower()
-            if name not in best:
-                best[name] = t
+            raw_key = t.name.lower().strip()
+            canon_name = alias_map.get(raw_key, t.name)
+            canon_key = canon_name.lower()
+
+            if canon_key not in best:
+                t.name = canon_name
+                best[canon_key] = t
             else:
-                existing = best[name]
-                # Prefer one with a version
+                existing = best[canon_key]
+                # Combine evidence
+                existing.evidence.extend(t.evidence)
+                existing.evidence_count = len(existing.evidence)
+                # Combine confidence
+                existing.confidence = min(100, max(existing.confidence, t.confidence))
+                existing.confidence_band = get_confidence_band(existing.confidence)
+                # Prefer versioned detection
                 if t.version and not existing.version:
-                    best[name] = t
-                # Prefer higher confidence if versions are same status
-                elif (t.version and existing.version) or (not t.version and not existing.version):
-                    if t.confidence > existing.confidence:
-                        best[name] = t
+                    existing.version = t.version
+                    existing.version_status = t.version_status
+                    existing.version_confidence = t.version_confidence
+                    existing.version_evidence = t.version_evidence
+                # Prefer populated CPEs
+                if t.cpe_candidates and not existing.cpe_candidates:
+                    existing.cpe_candidates = t.cpe_candidates
+                existing.name = canon_name
+
+        # Ensure all versioned technologies have version reflected in CPE candidate strings
+        for fp in best.values():
+            if fp.version and fp.cpe_candidates:
+                updated_cpes = []
+                for cand in fp.cpe_candidates:
+                    cpe_str = cand.cpe
+                    if ":*:" in cpe_str:
+                        parts = cpe_str.split(":")
+                        if len(parts) >= 6 and parts[5] in ("*", ""):
+                            parts[5] = fp.version
+                            cpe_str = ":".join(parts)
+                    updated_cpes.append(CPECandidate(cpe=cpe_str, confidence=cand.confidence))
+                fp.cpe_candidates = updated_cpes
+
         return list(best.values())

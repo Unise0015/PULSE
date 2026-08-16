@@ -13,15 +13,28 @@ class PatternMatcher:
 
     @staticmethod
     def normalize_version(version_str: str) -> Optional[str]:
-        """Normalizes extracted version strings (e.g. 'v1.2.3' -> '1.2.3', 'jquery.js?v=3.7.1' -> '3.7.1')."""
+        """Normalizes extracted version strings (e.g. 'v1.2.3' -> '1.2.3', 'jquery.js?ver=3.7.1' -> '3.7.1')."""
         if not version_str or not isinstance(version_str, str):
             return None
 
         v = version_str.strip()
-        # Search for semver or digit pattern in version_str first
-        m = re.search(r"(?:v\.?)?(\d+(?:\.\d+)+(?:-[a-zA-Z0-9\.]+|[a-zA-Z0-9\.]+)?|\d+)", v, re.IGNORECASE)
+        
+        # 1. Check for query param version (?ver=3.7.1 or ?v=5.3.2)
+        qp_match = re.search(r"[?&](?:ver|v|version)=([0-9]+(?:\.[0-9]+)+(?:-[a-zA-Z0-9.]+)*)", v, re.IGNORECASE)
+        if qp_match:
+            return qp_match.group(1).strip(".")
+
+        # 2. Check for npm/cdn version tag (@5.3.2 or @1.18.0)
+        at_match = re.search(r"@([0-9]+(?:\.[0-9]+)+(?:-[a-zA-Z0-9.]+)*)", v)
+        if at_match:
+            return at_match.group(1).strip(".")
+
+        # 3. Search for semver or digit pattern in version_str
+        m = re.search(r"(?:v\.?|ver\.?|version:?\s*)?(\d+(?:\.\d+)+(?:-[a-zA-Z0-9]+)?)", v, re.IGNORECASE)
         if m:
-            ver_found = m.group(0).strip(".")
+            ver_found = m.group(1).strip(".")
+            # Clean trailing suffixes
+            ver_found = re.sub(r"[-.](?:min|prod|production|dev|development|bundle|chunk|module|esm|js|css)+$", "", ver_found, flags=re.IGNORECASE)
             if ver_found.lower().startswith("v."):
                 ver_found = ver_found[2:]
             elif ver_found.lower().startswith("v"):
@@ -32,22 +45,44 @@ class PatternMatcher:
 
     @classmethod
     def extract_version(cls, rule: PatternRule, match: Optional[Match], text: str) -> Optional[str]:
-        """Extracts version from capture group \\1, \\2 or literal template."""
-        if not rule.version_group:
-            return None
-
-        vg = rule.version_group.strip()
+        """Extracts version from capture group \1, \2, ternary templates, or matched text."""
         raw_version = None
 
-        if vg.startswith("\\"):
-            try:
-                grp_idx = int(vg[1:])
-                if match and grp_idx <= len(match.groups()):
-                    raw_version = match.group(grp_idx)
-            except (ValueError, IndexError):
-                pass
-        elif not vg.startswith("\\"):
-            raw_version = vg
+        if rule.version_group:
+            vg = rule.version_group.strip()
+            
+            # Ternary syntax: \1?if_group_1:if_else
+            if "?" in vg and ":" in vg:
+                try:
+                    cond_part, else_part = vg.split(":", 1)
+                    grp_ref, then_val = cond_part.split("?", 1)
+                    grp_idx = int(grp_ref.lstrip("\\"))
+                    if match and grp_idx <= len(match.groups()) and match.group(grp_idx):
+                        matched_val = match.group(grp_idx)
+                        target_sub = "\\" + str(grp_idx)
+                        raw_version = then_val.replace(target_sub, matched_val) if target_sub in then_val else (then_val or matched_val)
+                    else:
+                        raw_version = else_part
+                except Exception:
+                    pass
+            elif vg.startswith("\\"):
+                try:
+                    grp_idx = int(vg.lstrip("\\"))
+                    if match and grp_idx <= len(match.groups()):
+                        raw_version = match.group(grp_idx)
+                except (ValueError, IndexError):
+                    pass
+            else:
+                raw_version = vg
+
+        # If rule had no explicit version group or group was empty, try extracting from match if available
+        if not raw_version and match:
+            for grp in match.groups():
+                if grp and re.search(r"\d+\.\d+", str(grp)):
+                    raw_version = str(grp)
+                    break
+            if not raw_version:
+                raw_version = match.group(0)
 
         return cls.normalize_version(raw_version) if raw_version else None
 
@@ -65,11 +100,13 @@ class PatternMatcher:
         Evaluates a PatternRule against target text.
         Returns a tuple of (DeclarativeEvidence, extracted_version) if matched.
         """
+        if not target_text and rule.raw_pattern != "":
+            return None
+
         matched_str = None
         match = None
 
         if rule.raw_pattern == "":
-            # Empty pattern indicates key presence match (e.g. cookie name exists)
             matched_str = header_name or cookie_name or meta_name or "present"
         elif rule.regex:
             match = rule.regex.search(target_text)
@@ -95,4 +132,3 @@ class PatternMatcher:
         )
 
         return evidence, version
-
