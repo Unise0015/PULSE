@@ -57,10 +57,10 @@ class ScannerConfig:
 @dataclass
 class ScanContext:
     root: Path
-    config: ScannerConfig
-    cache: Any                 # Reference to SQLite Cache Service
-    history: Any               # Reference to History Service
-    logger: logging.Logger
+    config: ScannerConfig = field(default_factory=ScannerConfig)
+    cache: Any = None                 # Reference to SQLite Cache Service
+    history: Any = None               # Reference to History Service
+    logger: logging.Logger = field(default_factory=lambda: logging.getLogger("pulse.ecosystems"))
     event_bus: 'EventBus' = field(default_factory=lambda: EventBus())
     phase: ScanPhase = ScanPhase.DISCOVERY
 

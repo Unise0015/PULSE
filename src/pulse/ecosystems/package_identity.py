@@ -68,6 +68,9 @@ KNOWN_PACKAGE_IDENTITIES: Dict[str, Tuple[str, str]] = {
     "spring": ("Maven", "Maven Central"),
     "wordpress": ("WordPress", "WordPress"),
     "drupal": ("Drupal", "Drupal"),
+    "phoenix": ("Hex", "Hex.pm"),
+    "actions/checkout": ("GitHub Actions", "GitHub"),
+    "hashicorp/aws": ("Terraform", "Terraform Registry"),
 }
 
 def get_known_identity(package_name: str) -> Tuple[Optional[str], Optional[str]]:

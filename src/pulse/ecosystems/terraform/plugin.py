@@ -58,6 +58,24 @@ class TerraformPlugin(EcosystemPlugin):
                     ))
             except Exception:
                 pass
+        else:
+            # Parse *.tf files
+            import re
+            for tf_file in root.glob("*.tf"):
+                try:
+                    content = tf_file.read_text(encoding="utf-8")
+                    # Match source and version in terraform block
+                    matches = re.findall(r'''source\s*=\s*["']([^"']+)["'][\s\S]*?version\s*=\s*["']([^"']+)["']''', content)
+                    for src, ver in matches:
+                        clean_ver = ver.lstrip("~>=< ")
+                        deps.append(RawDependency(
+                            name=src,
+                            version_spec=clean_ver,
+                            ecosystem="Terraform",
+                            source_file=tf_file.name
+                        ))
+                except Exception:
+                    pass
 
         return deps
 

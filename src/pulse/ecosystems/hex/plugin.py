@@ -43,6 +43,7 @@ class HexPlugin(EcosystemPlugin):
         root = self._get_root(context)
         deps = []
         lockfile = root / "mix.lock"
+        mix_exs = root / "mix.exs"
 
         if lockfile.exists():
             try:
@@ -55,6 +56,22 @@ class HexPlugin(EcosystemPlugin):
                         version_spec=ver,
                         ecosystem="Hex",
                         source_file=lockfile.name
+                    ))
+            except Exception:
+                pass
+        elif mix_exs.exists():
+            try:
+                content = mix_exs.read_text(encoding="utf-8")
+                import re
+                # Match {:package_name, "~> 1.0"} or {:package_name, "1.0.0"}
+                matches = re.findall(r'''\{:([a-zA-Z0-9_-]+),\s*["']([^"']+)["']''', content)
+                for name, ver in matches:
+                    clean_ver = ver.lstrip("~>=< ")
+                    deps.append(RawDependency(
+                        name=name,
+                        version_spec=clean_ver,
+                        ecosystem="Hex",
+                        source_file=mix_exs.name
                     ))
             except Exception:
                 pass

@@ -22,7 +22,32 @@ class RubyPlugin(EcosystemPlugin):
     def parse(self, context: ScanContext) -> List[RawDependency]:
         root = self._get_root(context)
         gemfile_lock = root / "Gemfile.lock"
-        packages, _ = self._parse_gemfile_lock(gemfile_lock)
+        gemfile = root / "Gemfile"
+        if gemfile_lock.exists():
+            packages, _ = self._parse_gemfile_lock(gemfile_lock)
+            return packages
+        elif gemfile.exists():
+            return self._parse_gemfile(gemfile)
+        return []
+
+    def _parse_gemfile(self, path: Path) -> List[RawDependency]:
+        packages = []
+        try:
+            import re
+            content = path.read_text(encoding="utf-8")
+            # Match gem 'name', 'version' or gem "name", "~> version"
+            matches = re.findall(r'''gem\s+['"]([^'"]+)['"](?:\s*,\s*['"]([^'"]+)['"])?''', content)
+            for name, ver in matches:
+                clean_ver = ver.lstrip("~>=< ") if ver else ""
+                packages.append(RawDependency(
+                    name=name,
+                    version_spec=clean_ver,
+                    ecosystem="RubyGems",
+                    dependency_type="DIRECT",
+                    source_file=str(path)
+                ))
+        except Exception:
+            pass
         return packages
 
     def resolve(self, raw_dependencies: List[RawDependency], context: ScanContext) -> List[ResolvedDependency]:

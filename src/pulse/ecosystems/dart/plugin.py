@@ -47,9 +47,10 @@ class DartPlugin(EcosystemPlugin):
 
         if lockfile.exists():
             try:
-                import yaml
-                with open(lockfile, "r", encoding="utf-8") as f:
-                    data = yaml.safe_load(f)
+                content = lockfile.read_text(encoding="utf-8")
+                try:
+                    import yaml
+                    data = yaml.safe_load(content)
                     packages = data.get("packages", {}) if isinstance(data, dict) else {}
                     for pkg_name, pkg_data in packages.items():
                         if isinstance(pkg_data, dict):
@@ -60,23 +61,52 @@ class DartPlugin(EcosystemPlugin):
                                 ecosystem="Dart",
                                 source_file=lockfile.name
                             ))
+                except ImportError:
+                    import re
+                    matches = re.findall(r'([a-zA-Z0-9_-]+):[\s\S]*?version:\s*["\']?([^"\'\s]+)["\']?', content)
+                    for name, ver in matches:
+                        deps.append(RawDependency(name=name, version_spec=ver, ecosystem="Dart", source_file=lockfile.name))
             except Exception:
                 pass
 
         if not deps and yamlfile.exists():
             try:
-                import yaml
-                with open(yamlfile, "r", encoding="utf-8") as f:
-                    data = yaml.safe_load(f)
+                content = yamlfile.read_text(encoding="utf-8")
+                try:
+                    import yaml
+                    data = yaml.safe_load(content)
                     dev_deps = data.get("dependencies", {}) if isinstance(data, dict) else {}
                     for name, spec in dev_deps.items():
-                        if isinstance(spec, str):
+                        if isinstance(spec, (str, int, float)):
+                            clean_spec = str(spec).strip("^~ ")
                             deps.append(RawDependency(
                                 name=name,
-                                version_spec=spec.strip("^~"),
+                                version_spec=clean_spec,
                                 ecosystem="Dart",
                                 source_file=yamlfile.name
                             ))
+                except ImportError:
+                    import re
+                    in_deps = False
+                    for line in content.splitlines():
+                        line_str = line.strip()
+                        if line_str == "dependencies:":
+                            in_deps = True
+                            continue
+                        elif line_str.endswith(":") and not line.startswith(" "):
+                            in_deps = False
+                            continue
+                        if in_deps and ":" in line_str and not line_str.startswith("#"):
+                            name, spec = line_str.split(":", 1)
+                            name = name.strip()
+                            clean_spec = spec.strip().strip("'\"").strip("^~ ")
+                            if name and clean_spec and not clean_spec.startswith("sdk"):
+                                deps.append(RawDependency(
+                                    name=name,
+                                    version_spec=clean_spec,
+                                    ecosystem="Dart",
+                                    source_file=yamlfile.name
+                                ))
             except Exception:
                 pass
 

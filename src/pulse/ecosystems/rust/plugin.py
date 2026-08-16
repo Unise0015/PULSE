@@ -27,11 +27,11 @@ class RustPlugin(EcosystemPlugin):
         packages, _ = self._parse_cargo_lock(cargo_lock)
         
         if not packages and cargo_toml.exists():
-            direct_deps = self._get_direct_deps_cargo(cargo_toml)
-            for dep in direct_deps:
+            direct_deps = self._get_direct_deps_cargo_with_versions(cargo_toml)
+            for dep, ver in direct_deps.items():
                 packages.append(RawDependency(
                     name=dep,
-                    version_spec="",
+                    version_spec=ver,
                     ecosystem="crates.io",
                     dependency_type="DIRECT",
                     source_file=str(cargo_toml)
@@ -137,6 +137,38 @@ class RustPlugin(EcosystemPlugin):
         except Exception:
             pass
         return packages, edges
+
+    def _get_direct_deps_cargo_with_versions(self, toml_path: Path) -> dict:
+        deps = {}
+        if not toml_path.exists():
+            return deps
+        try:
+            import re
+            content = toml_path.read_text(encoding="utf-8")
+            lines = content.splitlines()
+            in_deps_section = False
+            for line in lines:
+                line = line.strip()
+                if line.startswith("["):
+                    sec = line.lower()
+                    if "dependencies" in sec:
+                        in_deps_section = True
+                    else:
+                        in_deps_section = False
+                    continue
+                if in_deps_section and "=" in line and not line.startswith("#"):
+                    left, right = line.split("=", 1)
+                    dep_name = left.strip().strip('"').strip("'")
+                    ver = ""
+                    # Check string version: "1.0" or { version = "1.0" }
+                    ver_match = re.search(r'''["']([0-9][^"']*)["']''', right)
+                    if ver_match:
+                        ver = ver_match.group(1).lstrip("^~>=< ")
+                    if dep_name:
+                        deps[dep_name] = ver
+        except Exception:
+            pass
+        return deps
 
     def _get_direct_deps_cargo(self, toml_path: Path) -> Set[str]:
         direct = set()

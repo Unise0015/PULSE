@@ -32,6 +32,26 @@ class NodeDiscoverer(BaseDiscoverer):
             except Exception:
                 pass # Fail silently for discovery phase or log in future
                 
+        # If no package-lock.json exists, extract directly from package.json
+        if not package_lock_path.exists() and package_json_path.exists():
+            try:
+                with open(package_json_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    all_deps = {**data.get("dependencies", {}), **data.get("devDependencies", {})}
+                    for name, version in all_deps.items():
+                        clean_ver = str(version).lstrip("^~>=< ")
+                        packages.append(PackageInfo(
+                            name=name,
+                            version=clean_ver,
+                            ecosystem="npm",
+                            dependency_type="DIRECT",
+                            source_file=str(package_json_path),
+                            reachability="UNKNOWN"
+                        ))
+            except Exception:
+                pass
+            return packages
+
         # 2. Parse package-lock.json for resolved versions (and transitives)
         if package_lock_path.exists():
             try:
