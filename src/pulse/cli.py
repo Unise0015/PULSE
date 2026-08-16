@@ -211,8 +211,7 @@ def scan_single_package_menu():
     
     target_id = f"{result.provider.manifest.ecosystem}:{name.lower()}"
     
-    if is_latest_lookup:
-            orchestrator = ScannerOrchestrator()
+    orchestrator = ScannerOrchestrator()
     scan_result = orchestrator.run_targeted_scan(console, [pkg], target_type="package", target_id=target_id)
     AppState.LAST_SCAN = scan_result
     post_scan_render(console, scan_result)
