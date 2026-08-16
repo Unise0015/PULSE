@@ -130,7 +130,9 @@ class PackageResolutionService:
                 latest = data.get("dist-tags", {}).get("latest")
                 has_version = True
                 if version:
-                    has_version = version in data.get("versions", {})
+                    clean_ver = version.lstrip("vV ")
+                    versions_dict = data.get("versions", {})
+                    has_version = (version in versions_dict) or (clean_ver in versions_dict) or (f"v{clean_ver}" in versions_dict)
                 return RegistryValidationResult(True, has_version, latest, False, 200)
             return RegistryValidationResult(False, False, None, True, resp.status_code)
         except Exception:
@@ -146,7 +148,8 @@ class PackageResolutionService:
                 latest = data.get("crate", {}).get("max_version")
                 has_version = True
                 if version:
-                    has_version = any(v.get("num") == version for v in data.get("versions", []))
+                    clean_ver = version.lstrip("vV ")
+                    has_version = any(v.get("num") in (version, clean_ver, f"v{clean_ver}") for v in data.get("versions", []))
                 return RegistryValidationResult(True, has_version, latest, False, 200)
             return RegistryValidationResult(False, False, None, True, resp.status_code)
         except Exception:
@@ -187,7 +190,8 @@ class PackageResolutionService:
                         break
                 has_version = True
                 if version:
-                    has_version = version in versions or f"v{version}" in versions
+                    clean_ver = version.lstrip("vV ")
+                    has_version = (version in versions) or (clean_ver in versions) or (f"v{clean_ver}" in versions)
                 return RegistryValidationResult(True, has_version, latest, False, 200)
             return RegistryValidationResult(False, False, None, True, resp.status_code)
         except Exception:
@@ -204,7 +208,8 @@ class PackageResolutionService:
                 latest = versions[-1] if versions else None
                 has_version = True
                 if version:
-                    has_version = version in versions
+                    clean_ver = version.lstrip("vV ")
+                    has_version = (version in versions) or (clean_ver in versions) or (f"v{clean_ver}" in versions)
                 return RegistryValidationResult(True, has_version, latest, False, 200)
             return RegistryValidationResult(False, False, None, True, resp.status_code)
         except Exception:
@@ -352,15 +357,18 @@ class PackageResolutionService:
             requested_version=version
         )
 
-        local_eco, local_reg = get_known_identity(package_name)
+        from pulse.ecosystems.package_identity import get_canonical_package_info
+        canon_name, canon_eco, canon_reg = get_canonical_package_info(package_name)
+        search_pkg_name = canon_name if canon_name else package_name
+        local_eco, local_reg = (canon_eco, canon_reg) if canon_eco else get_known_identity(package_name)
 
         candidates: List[PackageCandidate] = []
         
         # ── Evidence Source 1: ecosyste.ms search ──
-        ecosystems_pkgs = await self.ecosystems_client.search_packages(package_name)
+        ecosystems_pkgs = await self.ecosystems_client.search_packages(search_pkg_name)
             
         for pkg in ecosystems_pkgs:
-            if pkg.get("name", "").lower() == package_name.lower():
+            if pkg.get("name", "").lower() in (package_name.lower(), search_pkg_name.lower()):
                 eco_key = pkg.get("registry", {}).get("ecosystem", "")
                 pulse_eco = ECOSYSTEMS_MS_TO_PULSE.get(eco_key)
                 
@@ -368,9 +376,10 @@ class PackageResolutionService:
                     provider = self._provider_map[pulse_eco]
                     
                     version_exists = False
+                    target_pkg_name = pkg.get("name") or search_pkg_name
                     if version:
                         ver_data = await self.ecosystems_client.get_package_version(
-                            pkg.get("registry", {}).get("name", ""), package_name, version
+                            pkg.get("registry", {}).get("name", ""), target_pkg_name, version
                         )
                         version_exists = bool(ver_data)
                     
@@ -398,21 +407,25 @@ class PackageResolutionService:
             # ALWAYS check it first — this is the primary fix for the Bootstrap problem.
             if local_eco and local_eco not in found_ecos and local_eco in self._provider_map:
                 hint_provider = self._provider_map[local_eco]
-                hint_candidate = await self._check_native_provider(client, hint_provider, package_name, version)
+                hint_candidate = await self._check_native_provider(client, hint_provider, search_pkg_name, version)
                 if hint_candidate:
                     candidates.append(hint_candidate)
                     found_ecos.add(local_eco)
 
-            # Check remaining providers
+            # Check remaining providers and also native-verify any candidate with version_exists=False
             native_tasks = []
             for provider in self.providers:
-                if provider.manifest.name not in found_ecos:
-                    native_tasks.append(self._check_native_provider(client, provider, package_name, version))
+                p_name = provider.manifest.name
+                existing = [c for c in candidates if c.ecosystem.lower() == p_name.lower()]
+                if not existing or not any(c.version_exists for c in existing):
+                    native_tasks.append(self._check_native_provider(client, provider, search_pkg_name, version))
             
             if native_tasks:
                 native_results = await asyncio.gather(*native_tasks)
                 for nr in native_results:
                     if nr:
+                        # Replace unverified candidate if present
+                        candidates = [c for c in candidates if c.ecosystem.lower() != nr.ecosystem.lower()]
                         candidates.append(nr)
 
         # ── Score All Candidates ──
@@ -443,7 +456,8 @@ class PackageResolutionService:
                 
         strong_local = (local_eco and local_eco.lower() == best.ecosystem.lower())
 
-        if (best.confidence >= 60 and is_clearly_ahead) or strong_local or len(good_candidates) == 1:
+        if (best.confidence >= 50 and is_clearly_ahead) or strong_local or len(good_candidates) == 1:
+            result.package_name = best.package_name
             result.ecosystem = best.ecosystem
             result.registry_name = best.registry_name
             result.provider = best.provider
@@ -456,6 +470,12 @@ class PackageResolutionService:
             result.requires_user_selection = False
         else:
             result.requires_user_selection = True
+            result.package_name = best.package_name
+            result.package_exists = True
+            result.version_exists = best.version_exists
+            result.ecosystem = best.ecosystem
+            result.registry_name = best.registry_name
+            result.provider = best.provider
             result.alternative_candidates = good_candidates
             result.resolution_reason = "Ambiguous package identity or missing version."
 

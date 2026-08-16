@@ -163,13 +163,15 @@ def scan_single_package_menu():
                 return
 
         if not result.version_exists and not is_latest_lookup and not result.requires_user_selection:
-            console.print(f"\n[bold green]✓ {name} identified[/bold green]")
+            display_name = f"{name} (canonical: {result.package_name})" if (result.package_name and result.package_name.lower() != name.lower()) else name
+            console.print(f"\n[bold green]✓ {display_name} identified[/bold green]")
             console.print(f"[bold green]✓ Ecosystem: {result.ecosystem}[/bold green]")
             console.print(f"[yellow]⚠ Version {version} was not verified in registry index. Proceeding with vulnerability scan...[/yellow]")
             break
 
         if not result.requires_user_selection:
-            console.print(f"\n[bold green]✓ {result.package_name} identified[/bold green]")
+            display_name = f"{name} (canonical: {result.package_name})" if (result.package_name and result.package_name.lower() != name.lower()) else (result.package_name or name)
+            console.print(f"\n[bold green]✓ {display_name} identified[/bold green]")
             console.print(f"[bold green]✓ Ecosystem: {result.ecosystem}[/bold green]")
             if not is_latest_lookup:
                 console.print(f"[bold green]✓ Version {version} verified[/bold green]")
@@ -206,9 +208,10 @@ def scan_single_package_menu():
         return
         
     from pulse.domain.models import PackageInfo
-    pkg = PackageInfo(name=name, version="" if is_latest_lookup else version, ecosystem=result.provider.manifest.ecosystem)
+    effective_name = result.package_name if (result and result.package_name) else name
+    pkg = PackageInfo(name=effective_name, version="" if is_latest_lookup else version, ecosystem=result.provider.manifest.ecosystem)
     
-    target_id = f"{result.provider.manifest.ecosystem}:{name.lower()}"
+    target_id = f"{result.provider.manifest.ecosystem}:{effective_name.lower()}"
     
     orchestrator = ScannerOrchestrator()
     scan_result = orchestrator.run_targeted_scan(console, [pkg], target_type="package", target_id=target_id)

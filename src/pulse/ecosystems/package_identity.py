@@ -198,3 +198,48 @@ def resolve_technology_package(
         logger.debug("PackageResolutionService resolution failed for '%s': %s", raw_name, e)
 
     return None
+
+
+# Comprehensive canonical alias mappings for package managers
+# Format: "alias_name": ("canonical_package_name", "ecosystem_name", "registry_name")
+CANONICAL_PACKAGE_ALIASES: Dict[str, Tuple[str, str, str]] = {
+    # Node.js / npm aliases
+    "next.js": ("next", "Node.js", "npm"),
+    "nextjs": ("next", "Node.js", "npm"),
+    "nuxt.js": ("nuxt", "Node.js", "npm"),
+    "nuxtjs": ("nuxt", "Node.js", "npm"),
+    "vue.js": ("vue", "Node.js", "npm"),
+    "vuejs": ("vue", "Node.js", "npm"),
+    "react.js": ("react", "Node.js", "npm"),
+    "reactjs": ("react", "Node.js", "npm"),
+    "express.js": ("express", "Node.js", "npm"),
+    "expressjs": ("express", "Node.js", "npm"),
+    "moment.js": ("moment", "Node.js", "npm"),
+    "momentjs": ("moment", "Node.js", "npm"),
+    "three.js": ("three", "Node.js", "npm"),
+    "threejs": ("three", "Node.js", "npm"),
+    "d3.js": ("d3", "Node.js", "npm"),
+    "d3js": ("d3", "Node.js", "npm"),
+    "chart.js": ("chart.js", "Node.js", "npm"),
+    "chartjs": ("chart.js", "Node.js", "npm"),
+    "tailwind": ("tailwindcss", "Node.js", "npm"),
+    "angular.js": ("angular", "Node.js", "npm"),
+    "angularjs": ("angular", "Node.js", "npm"),
+    # Composer / PHP aliases
+    "laravel": ("laravel/framework", "Composer", "Packagist"),
+    "symfony": ("symfony/symfony", "Composer", "Packagist"),
+    # Maven / Java aliases
+    "spring": ("org.springframework:spring-core", "Maven", "Maven Central"),
+    "spring-core": ("org.springframework:spring-core", "Maven", "Maven Central"),
+    # Ruby aliases
+    "rubyonrails": ("rails", "Ruby", "RubyGems"),
+    # Go aliases
+    "golang": ("go", "Go", "Go"),
+}
+
+def get_canonical_package_info(package_name: str) -> Tuple[str, Optional[str], Optional[str]]:
+    """Return (canonical_name, ecosystem, registry) for a given alias or raw package name."""
+    norm = (package_name or "").strip().lower()
+    if norm in CANONICAL_PACKAGE_ALIASES:
+        return CANONICAL_PACKAGE_ALIASES[norm]
+    return (package_name, None, None)
