@@ -131,8 +131,11 @@ class NVDCorrelationEngine:
         tracker: NVDStatisticsTracker,
     ) -> Optional[List[Dict[str, Any]]]:
         """Retrieve CVEs for a candidate, checking cache first."""
-        # Build the CPE query string (wildcard version for broader retrieval)
-        cpe_query = candidate.cpe_template
+        # Prefer exact version CPE if available, falling back to template
+        cpe_query = candidate.resolved_cpe or candidate.cpe_template
+        if not cpe_query and candidate.vendor and candidate.product:
+            ver = candidate.detected_version or "*"
+            cpe_query = f"cpe:2.3:a:{candidate.vendor}:{candidate.product}:{ver}:*:*:*:*:*:*:*" 
 
         cached = self.cache.get(cpe_query, candidate.detected_version)
         if cached is not None:

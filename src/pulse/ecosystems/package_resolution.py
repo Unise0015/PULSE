@@ -172,6 +172,8 @@ class PackageResolutionService:
 
     async def _check_packagist(self, client: httpx.AsyncClient, name: str, version: Optional[str]) -> RegistryValidationResult:
         try:
+            if name.lower() == "php":
+                return RegistryValidationResult(True, True, "8.4.22", False, 200)
             resp = await client.get(f"https://packagist.org/packages/{name}.json")
             if resp.status_code == 404:
                 return RegistryValidationResult(False, False, None, False, 404)

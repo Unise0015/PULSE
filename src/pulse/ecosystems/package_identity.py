@@ -23,6 +23,17 @@ class PackageIdentity:
 # This serves as a high-confidence (+25 score) baseline for resolution.
 
 KNOWN_PACKAGE_IDENTITIES: Dict[str, Tuple[str, str]] = {
+    "php": ("Composer", "Packagist"),
+    "python": ("Python", "PyPI"),
+    "ruby": ("Ruby", "RubyGems"),
+    "node": ("Node.js", "npm"),
+    "nodejs": ("Node.js", "npm"),
+    "rust": ("Rust", "crates.io"),
+    "go": ("Go", "Go"),
+    "golang": ("Go", "Go"),
+    "nginx": ("Nginx", "Nginx"),
+    "apache": ("Apache", "Apache"),
+    "httpd": ("Apache", "Apache"),
     "bootstrap": ("Node.js", "npm"),
     "react": ("Node.js", "npm"),
     "jquery": ("Node.js", "npm"),

@@ -165,9 +165,8 @@ def scan_single_package_menu():
         if not result.version_exists and not is_latest_lookup and not result.requires_user_selection:
             console.print(f"\n[bold green]✓ {name} identified[/bold green]")
             console.print(f"[bold green]✓ Ecosystem: {result.ecosystem}[/bold green]")
-            console.print(f"[yellow]✗ Version {version} not found[/yellow]\n")
-            # Only loop again, leaving `name` populated
-            continue
+            console.print(f"[yellow]⚠ Version {version} was not verified in registry index. Proceeding with vulnerability scan...[/yellow]")
+            break
 
         if not result.requires_user_selection:
             console.print(f"\n[bold green]✓ {result.package_name} identified[/bold green]")

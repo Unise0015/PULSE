@@ -63,7 +63,7 @@ class VersionEnricher(BaseEnricher):
             progress.update(task, completed=1, description="[green]Registry data[/green] collected")
 
 class OSVEnricher(BaseEnricher):
-    """Matches packages to vulnerabilities using OSV API."""
+    """Matches packages to vulnerabilities using OSV API and NVD CPE correlation."""
     
     def enrich(self, data: EnrichmentResult, progress: Optional[Progress] = None, context: Any = None) -> None:
         if not data.packages:
@@ -73,7 +73,7 @@ class OSVEnricher(BaseEnricher):
             context.phase = ScanPhase.CORRELATION
             
         if progress:
-            task = progress.add_task("[yellow]Matching vulnerabilities (OSV)...[/yellow]", total=None)
+            task = progress.add_task("[yellow]Matching vulnerabilities (OSV / NVD)...[/yellow]", total=None)
         
         osv_provider = OSVProvider()
         findings = osv_provider.lookup_packages(data.packages)
@@ -83,9 +83,82 @@ class OSVEnricher(BaseEnricher):
             
         data.findings.extend(findings)
         data.metrics.osv_matches = len(findings)
+
+        # Check for packages with 0 OSV findings that have known CPE entries in catalog or technology definitions
+        packages_with_findings = {f.package.name.lower() for f in data.findings if f.package and f.package.name}
+        unmatched_packages = [p for p in data.packages if p.name and p.name.lower() not in packages_with_findings]
+        
+        if unmatched_packages:
+            try:
+                from pulse.website.technology_catalog import TECHNOLOGY_CATALOG
+                from pulse.enrichment.nvd.correlator import NVDCorrelationEngine
+                from pulse.correlation.models import CorrelationResult, CPECandidate, ResolverMatchType
+                from pulse.domain.models import FindingSourceType
+                
+                cpe_results = []
+                pkg_map = {}
+                for pkg in unmatched_packages:
+                    norm = pkg.name.lower()
+                    cat_entry = TECHNOLOGY_CATALOG.get(norm)
+                    cpe_base = cat_entry.get("cpe") if cat_entry else None
+                    if not cpe_base and norm == "php":
+                        cpe_base = "cpe:2.3:a:php:php"
+                    elif not cpe_base and norm == "nginx":
+                        cpe_base = "cpe:2.3:a:nginx:nginx"
+                    elif not cpe_base and norm in ("apache", "httpd"):
+                        cpe_base = "cpe:2.3:a:apache:http_server"
+                        
+                    if cpe_base:
+                        parts = cpe_base.split(":")
+                        vendor = parts[3] if len(parts) > 3 else norm
+                        product = parts[4] if len(parts) > 4 else norm
+                        ver_str = pkg.version or "*"
+                        cpe_str = f"{cpe_base}:{ver_str}:*:*:*:*:*:*:*"
+                        candidate = CPECandidate(
+                            cpe_template=f"{cpe_base}:*:*:*:*:*:*:*:*",
+                            detected_version=pkg.version,
+                            resolved_cpe=cpe_str,
+                            confidence=100,
+                            source="technology_catalog",
+                            vendor=vendor,
+                            product=product,
+                            exact_version_match=bool(pkg.version),
+                            match_type=ResolverMatchType.EXACT
+                        )
+                        cpe_res = CorrelationResult(
+                            technology=pkg.name,
+                            inventory_technology_key=norm,
+                            candidates=[candidate],
+                            selected_candidate=candidate,
+                            resolution_confidence=100
+                        )
+                        cpe_results.append(cpe_res)
+                        pkg_map[norm] = pkg
+                        
+                if cpe_results:
+                    engine = NVDCorrelationEngine()
+                    cpe_vulns, _ = engine.correlate(cpe_results)
+                    for cv in cpe_vulns:
+                        orig_pkg = pkg_map.get(cv.technology_name.lower()) or PackageInfo(name=cv.technology_name, version=cv.version or "Unknown", ecosystem="NVD")
+                        data.findings.append(VulnerabilityFinding(
+                            package=orig_pkg,
+                            cve_id=cv.cve_id,
+                            cvss_score=cv.cvss_v3_score or 0.0,
+                            cvss_severity=cv.severity or "UNKNOWN",
+                            description=cv.description or "",
+                            summary=cv.description[:247] + "..." if len(cv.description or "") > 250 else (cv.description or ""),
+                            source="NVD",
+                            published_date=cv.published_date.strftime("%Y-%m-%d") if cv.published_date else None,
+                            nvd_url=cv.nvd_url or f"https://nvd.nist.gov/vuln/detail/{cv.cve_id}",
+                            cwe=cv.cwe,
+                            source_type=FindingSourceType.PACKAGE,
+                            source_asset=orig_pkg.name
+                        ))
+            except Exception as e:
+                logger.debug("NVD CPE correlation in OSVEnricher failed: %s", e)
         
         if progress:
-            progress.update(task, completed=1, description=f"[green]OSV Matching[/green] found {len(findings)} vulnerabilities")
+            progress.update(task, completed=1, description=f"[green]Vulnerability Matching[/green] found {len(data.findings)} vulnerabilities")
 
 class NVDEnricher(BaseEnricher):
     """Enriches vulnerabilities with NVD metadata."""
