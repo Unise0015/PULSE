@@ -915,7 +915,7 @@ def help_menu():
                 ("C / C++", "Conan Center", "conanfile.txt, conanfile.py", "Conan Parser + Registry"),
                 ("Swift", "SwiftPM", "Package.swift, Package.resolved", "Swift Package Manifest Parser"),
                 ("GitHub Actions", "GitHub", ".github/workflows/*.yml, action.yml", "YAML Workflow Parser"),
-                ("Containers", "Docker / OCI", "Dockerfile, container image tags", "Dockerfile AST Parser")
+                ("IaC & Infrastructure", "Terraform & Helm", "*.tf, Chart.yaml, values.yaml", "HCL / YAML AST Parser")
             ]
 
             for eco, reg, files, method in ecosystems_data:

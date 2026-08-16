@@ -45,7 +45,7 @@ PULSE (Package & Unified Lifecycle Security Engine) is an enterprise-grade vulne
 ## 2. Core Subsystems
 
 ### 1. Discovery & Ecosystem Layer (`pulse.ecosystems`)
-- Discovers installed packages and project manifests across 14+ package ecosystems: Python (pip), Node.js (npm), Rust (Cargo), Go (Go Modules), Ruby (RubyGems), PHP (Composer), Java (Maven), .NET (NuGet), Dart (Pub), Elixir (Hex), C/C++ (Conan), Swift (SwiftPM), GitHub Actions, and Docker/Containers.
+- Discovers installed packages and project manifests across 14+ package ecosystems: Python (pip), Node.js (npm), Rust (Cargo), Go (Go Modules), Ruby (RubyGems), PHP (Composer), Java (Maven), .NET (NuGet), Dart (Pub), Elixir (Hex), C/C++ (Conan), Swift (SwiftPM), GitHub Actions, and Infrastructure as Code (Terraform/Helm).
 - Standardized plugin interface (`EcosystemPlugin`) with dependency topological sorting.
 
 ### 2. Declarative Web Intelligence Engine (`pulse.website`)

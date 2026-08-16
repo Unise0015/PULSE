@@ -96,7 +96,7 @@
 | **C / C++** | Conan Center | `conanfile.txt`, `conanfile.py` | Conan Center API / Parser |
 | **Swift** | SwiftPM | `Package.swift`, `Package.resolved` | SwiftPM Manifest Parser |
 | **GitHub Actions** | GitHub | `.github/workflows/*.yml`, `action.yml` | Workflow AST & Tag Parser |
-| **Containers** | Docker / OCI | `Dockerfile`, container image tags | Dockerfile AST & Registry API |
+| **IaC & Infrastructure** | Terraform & Helm | `*.tf`, `Chart.yaml`, `values.yaml` | Terraform Registry / Artifact Hub API |
 
 ---
 
