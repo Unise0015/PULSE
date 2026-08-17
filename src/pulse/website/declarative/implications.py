@@ -60,7 +60,9 @@ class ImplicationResolver:
                         "cpes": cpes,
                         "evidence": [],
                         "inferred": True,
-                        "inferred_from": current_tech
+                        "inferred_from": current_tech,
+                        "domain": imp_rule.domain if imp_rule else "web",
+                        "vendor": imp_rule.vendor if imp_rule else None
                     }
                     queue.append(clean_implied)
 

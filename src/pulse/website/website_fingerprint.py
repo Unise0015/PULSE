@@ -9,9 +9,10 @@ from pulse.domain.models import (
     CPECandidate
 )
 from pulse.website.signatures import SignatureRegistry
-from pulse.website.confidence import WeightedMaxBonusCalculator, get_confidence_band
+from pulse.website.confidence import WeightedMaxBonusCalculator, get_confidence_band, SignalDisagreementDetector
 from pulse.website.declarative_engine import DeclarativeSignatureEngine
 from pulse.website.favicon_fingerprint import FaviconFingerprinter
+from pulse.website.bot_challenge import BotChallengeDetector
 
 import ipaddress
 import logging
@@ -64,8 +65,9 @@ def validate_url(url: str, external_only: bool = False) -> Tuple[bool, str]:
 
     return True, "URL is valid"
 
+
 class WebsiteFingerprintAnalyzer:
-    """Analyzes web assets passively for technologies and security headers."""
+    """Analyzes web assets passively across 6+ signal vectors, multi-route probing, and SRI hashing."""
 
     def __init__(self):
         self.technologies: List[TechnologyFingerprint] = []
@@ -91,14 +93,15 @@ class WebsiteFingerprintAnalyzer:
         body = ""
         response_headers = {}
         cookies = {}
+        status_code = 200
         
         try:
             with httpx.Client(timeout=TIMEOUT, follow_redirects=True, max_redirects=MAX_REDIRECTS) as client:
                 with client.stream("GET", url, headers=headers) as response:
+                    status_code = response.status_code
                     response_headers = dict(response.headers)
                     cookies = dict(response.cookies)
                     
-                    # Read up to MAX_BODY_SIZE
                     bytes_read = 0
                     chunks = []
                     for chunk in response.iter_bytes(chunk_size=8192):
@@ -109,25 +112,28 @@ class WebsiteFingerprintAnalyzer:
                         chunks.append(chunk)
                         
                     body = b"".join(chunks).decode('utf-8', errors='ignore')
-        except Exception:
-            # Return what we have (empty) if request fails
-            pass
-            
+        except Exception as e:
+            logger.debug("Primary HTTP request failed for %s: %s", url, e)
+
+        # 0. Bot-Challenge & WAF Interstitial Check
+        challenge_check = BotChallengeDetector.inspect(status_code, response_headers, body)
+        if challenge_check.is_challenge:
+            logger.warning("Bot challenge screen detected: %s", challenge_check.reason)
+
         script_srcs = []
         if body:
-            script_srcs = re.findall(r'<script[^>]+src=["\']([^"\']+)["\']', body, re.IGNORECASE)
+            script_srcs = re.findall(r"""<script[^>]+src=["']([^"']+)["']""", body, re.IGNORECASE)
 
-        # 1. Load signatures
+        # 1. Load Procedural Signatures
         signatures = SignatureRegistry.load()
         execution_metrics: List[SignatureExecutionMetrics] = []
         detected_fingerprints: List[TechnologyFingerprint] = []
         
         signatures_matched = 0
         total_evidence_items = 0
-        
         calculator = WeightedMaxBonusCalculator()
 
-        # 2. Execute each signature
+        # 2. Execute Procedural Signatures
         for signature in signatures:
             t0 = time.perf_counter()
             try:
@@ -137,16 +143,10 @@ class WebsiteFingerprintAnalyzer:
             t1 = time.perf_counter()
             execution_time_ms = (t1 - t0) * 1000.0
 
-            # Deduplicate evidence for this signature
             unique_evidence = self._deduplicate_evidence(raw_evidence)
-            
-            # Check if signature matches
             is_matched = len(unique_evidence) >= signature.minimum_matches
-            
-            # Record execution and calculate match rate
             match_rate = SignatureRegistry.record_execution(signature.signature_id, is_matched)
             
-            # Record metrics
             execution_metrics.append(SignatureExecutionMetrics(
                 signature_id=signature.signature_id,
                 execution_time_ms=execution_time_ms,
@@ -159,7 +159,6 @@ class WebsiteFingerprintAnalyzer:
                 signatures_matched += 1
                 total_evidence_items += len(unique_evidence)
                 
-                # Extract version if supported
                 version = None
                 if signature.provides_version:
                     try:
@@ -167,14 +166,10 @@ class WebsiteFingerprintAnalyzer:
                     except Exception:
                         pass
                 
-                # Determine version status and confidence
                 version_status, version_confidence, version_evidence = self._determine_version_info(version, unique_evidence)
-                
-                # Calculate confidence score
                 confidence_score = calculator.calculate(unique_evidence)
                 confidence_band = get_confidence_band(confidence_score)
                 
-                # CPE Candidates
                 cpe_candidates = []
                 if signature.provides_cpe_candidates:
                     try:
@@ -203,7 +198,7 @@ class WebsiteFingerprintAnalyzer:
                     children=[]
                 ))
 
-        # 2.5 Declarative Signature Engine Execution (3000+ JSON Signatures)
+        # 2.5 Declarative Signature Engine Execution (3,000+ Declarative JSON Signatures + SRI)
         try:
             decl_engine = get_declarative_engine()
             decl_fingerprints = decl_engine.detect(
@@ -223,7 +218,14 @@ class WebsiteFingerprintAnalyzer:
         except Exception as e:
             logger.warning("Declarative web signature engine execution failed: %s", e)
 
-        # 2.6 Favicon Fingerprinting (Hash Matching)
+        # 2.6 Multi-Route Probing (robots.txt, wp-json, and synthetic 404 error debug screen probe)
+        if not challenge_check.is_challenge:
+            try:
+                self._probe_auxiliary_routes(url, decl_engine, detected_fingerprints)
+            except Exception as e:
+                logger.debug("Auxiliary route probing error: %s", e)
+
+        # 2.7 Favicon Fingerprinting (Cryptographic MurmurHash3 MMH3 Matching)
         try:
             favicon_url = urljoin(url, "/favicon.ico")
             with httpx.Client(timeout=3.0, follow_redirects=True) as fav_client:
@@ -242,12 +244,9 @@ class WebsiteFingerprintAnalyzer:
         # 3. Deduplicate final list of technologies by name
         final_techs = self._deduplicate(detected_fingerprints)
 
-        
         # 4. Establish relationships
         tech_map = {f.signature_id: f for f in final_techs if f.signature_id}
-        
         for fp in final_techs:
-            # Find matching signature configuration
             sig_conf = next((s for s in signatures if s.signature_id == fp.signature_id), None)
             if sig_conf and sig_conf.supports_relationships and sig_conf.parent_id:
                 parent_fp = tech_map.get(sig_conf.parent_id)
@@ -256,16 +255,13 @@ class WebsiteFingerprintAnalyzer:
                     if fp.name not in parent_fp.children:
                         parent_fp.children.append(fp.name)
 
-        # 5. Validate DAG to avoid infinite loops and cycles
+        # 5. Validate DAG to avoid cycles
         try:
             self._validate_dag(final_techs)
         except ValueError as e:
-            # Safely break all relationships if validation fails to keep scan running
-            for fp in final_techs:
-                fp.parent = None
-                fp.children = []
+            logger.error(f"DAG Validation failed: {e}")
 
-        # 6. Analyze security headers
+        # 6. Assess Security Headers
         self._assess_security_headers(response_headers)
         
         # 7. Collect Statistics
@@ -283,6 +279,36 @@ class WebsiteFingerprintAnalyzer:
             security_headers=self.security_headers,
             statistics=stats
         )
+
+    def _probe_auxiliary_routes(
+        self,
+        base_url: str,
+        decl_engine: DeclarativeSignatureEngine,
+        detected_fingerprints: List[TechnologyFingerprint]
+    ):
+        """Passively probes robots.txt and synthetic error page for unhardened debug traces."""
+        routes_to_probe = [
+            "/robots.txt",
+            "/_pulse_probe_error_404_"
+        ]
+        with httpx.Client(timeout=2.5, follow_redirects=True) as probe_client:
+            for route in routes_to_probe:
+                try:
+                    probe_url = urljoin(base_url, route)
+                    resp = probe_client.get(probe_url, headers={"User-Agent": "PULSE/1.0"})
+                    if resp.status_code in (200, 404, 500) and resp.text:
+                        # Feed response through declarative engine to catch Whoops / YSOD / Spring Whitelabel
+                        route_fps = decl_engine.detect(
+                            url=probe_url,
+                            headers=dict(resp.headers),
+                            cookies=dict(resp.cookies),
+                            html_body=resp.text[:65536]
+                        )
+                        for rfp in route_fps:
+                            rfp.confidence_band = get_confidence_band(rfp.confidence)
+                            detected_fingerprints.append(rfp)
+                except Exception:
+                    continue
 
     def _deduplicate_evidence(self, evidence: List[DetectionEvidence]) -> List[DetectionEvidence]:
         seen = {}
@@ -397,6 +423,9 @@ class WebsiteFingerprintAnalyzer:
             "jquery": "jQuery",
             "jquery-migrate": "jQuery Migrate",
             "jquery migrate": "jQuery Migrate",
+            "spring": "Spring Boot",
+            "spring boot": "Spring Boot",
+            "asp.net": "ASP.NET",
         }
 
         best: Dict[str, TechnologyFingerprint] = {}
@@ -410,24 +439,19 @@ class WebsiteFingerprintAnalyzer:
                 best[canon_key] = t
             else:
                 existing = best[canon_key]
-                # Combine evidence
                 existing.evidence.extend(t.evidence)
                 existing.evidence_count = len(existing.evidence)
-                # Combine confidence
                 existing.confidence = min(100, max(existing.confidence, t.confidence))
                 existing.confidence_band = get_confidence_band(existing.confidence)
-                # Prefer versioned detection
                 if t.version and not existing.version:
                     existing.version = t.version
                     existing.version_status = t.version_status
                     existing.version_confidence = t.version_confidence
                     existing.version_evidence = t.version_evidence
-                # Prefer populated CPEs
                 if t.cpe_candidates and not existing.cpe_candidates:
                     existing.cpe_candidates = t.cpe_candidates
                 existing.name = canon_name
 
-        # Ensure all versioned technologies have version reflected in CPE candidate strings
         for fp in best.values():
             if fp.version and fp.cpe_candidates:
                 updated_cpes = []

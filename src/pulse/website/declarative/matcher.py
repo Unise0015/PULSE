@@ -1,6 +1,7 @@
 """
 Matcher and Version Extractor for PULSE Declarative Web Technology Intelligence.
-Provides pattern matching, reusable version extraction, version normalization, and evidence collection.
+Provides pattern matching, SemVer 2.0 / CalVer grammar extraction, conservative range pinning,
+and reusable evidence collection.
 """
 
 import re
@@ -13,7 +14,10 @@ class PatternMatcher:
 
     @staticmethod
     def normalize_version(version_str: str) -> Optional[str]:
-        """Normalizes extracted version strings (e.g. 'v1.2.3' -> '1.2.3', 'jquery.js?ver=3.7.1' -> '3.7.1')."""
+        """
+        Normalizes extracted version strings supporting SemVer 2.0 (with prerelease/build metadata)
+        and CalVer (date-based versions like 2024.1.0, 24.04).
+        """
         if not version_str or not isinstance(version_str, str):
             return None
 
@@ -22,24 +26,40 @@ class PatternMatcher:
         # 1. Check for query param version (?ver=3.7.1 or ?v=5.3.2)
         qp_match = re.search(r"[?&](?:ver|v|version)=([0-9]+(?:\.[0-9]+)+(?:-[a-zA-Z0-9.]+)*)", v, re.IGNORECASE)
         if qp_match:
-            return qp_match.group(1).strip(".")
+            v = qp_match.group(1).strip(".")
 
         # 2. Check for npm/cdn version tag (@5.3.2 or @1.18.0)
         at_match = re.search(r"@([0-9]+(?:\.[0-9]+)+(?:-[a-zA-Z0-9.]+)*)", v)
         if at_match:
-            return at_match.group(1).strip(".")
+            v = at_match.group(1).strip(".")
 
-        # 3. Search for semver or digit pattern in version_str
-        m = re.search(r"(?:v\.?|ver\.?|version:?\s*)?(\d+(?:\.\d+)+(?:-[a-zA-Z0-9]+)?)", v, re.IGNORECASE)
-        if m:
-            ver_found = m.group(1).strip(".")
+        # 3. Strip leading v. or v prefix
+        if v.lower().startswith("v."):
+            v = v[2:]
+        elif v.lower().startswith("v") and len(v) > 1 and v[1].isdigit():
+            v = v[1:]
+
+        # 4. Search for SemVer 2.0 pattern (X.Y.Z-prerelease+build)
+        semver_match = re.search(
+            r"(\d+(?:\.\d+)+(?:-[a-zA-Z0-9._-]+)?(?:\+[a-zA-Z0-9._-]+)?)",
+            v,
+            re.IGNORECASE
+        )
+        if semver_match:
+            ver_found = semver_match.group(1).strip(".")
             # Clean trailing suffixes
             ver_found = re.sub(r"[-.](?:min|prod|production|dev|development|bundle|chunk|module|esm|js|css)+$", "", ver_found, flags=re.IGNORECASE)
-            if ver_found.lower().startswith("v."):
-                ver_found = ver_found[2:]
-            elif ver_found.lower().startswith("v"):
-                ver_found = ver_found[1:]
             return ver_found if ver_found else None
+
+        # 5. Search for CalVer pattern (YYYY.MM.DD or YY.MM)
+        calver_match = re.search(r"(20\d{2}\.(?:0?[1-9]|1[0-2])(?:\.\d+)?)", v)
+        if calver_match:
+            return calver_match.group(1)
+
+        # 6. Single major digit fallback if unambiguous
+        digit_match = re.match(r"^(\d+)$", v)
+        if digit_match:
+            return digit_match.group(1)
 
         return None
 
