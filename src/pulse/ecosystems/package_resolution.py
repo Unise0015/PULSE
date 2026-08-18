@@ -453,6 +453,17 @@ class PackageResolutionService:
                 candidate_description=candidates[0].description if candidates else None
             )
             if eval_res.is_standalone:
+                standalone_cand = PackageCandidate(
+                    ecosystem="Standalone Software",
+                    registry_name="NVD / Linux Distros",
+                    package_name=package_name,
+                    requested_version=version,
+                    package_exists=True,
+                    version_exists=True,
+                    confidence=eval_res.confidence,
+                    source="standalone_heuristic",
+                    reason=eval_res.warning_message or "Resolved to Standalone Infrastructure / Web Server"
+                )
                 result.package_name = package_name
                 result.ecosystem = "Standalone Software"
                 result.registry_name = "NVD / Linux Distros"
@@ -465,6 +476,7 @@ class PackageResolutionService:
                 result.is_standalone = True
                 result.warning_message = eval_res.warning_message
                 result.cpe_candidates = eval_res.cpe_candidates or []
+                result.candidates = [standalone_cand]
                 return result
 
         # ── Score All Candidates ──

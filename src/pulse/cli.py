@@ -143,7 +143,7 @@ def scan_single_package_menu():
         with console.status("[cyan]Detecting package...[/cyan]", spinner="dots"):
             result = asyncio.run(resolver.resolve(name, None if is_latest_lookup else version))
             
-        if not result.candidates:
+        if not result.candidates and not result.is_standalone:
             console.print(f"\n[yellow]✗ Package \"{name}\" not found[/yellow]")
             if result.network_error:
                 console.print("[yellow]Unable to verify package because package registries are unavailable.[/yellow]")
