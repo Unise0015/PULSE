@@ -162,6 +162,16 @@ def scan_single_package_menu():
             else:
                 return
 
+        if result.is_standalone:
+            display_name = result.package_name or name
+            console.print(f"\n[bold green]✓ {display_name} identified[/bold green]")
+            console.print(f"[bold green]✓ Ecosystem: {result.ecosystem} ({result.registry_name})[/bold green]")
+            if result.warning_message:
+                console.print(f"[yellow]ℹ {result.warning_message}[/yellow]")
+            if not is_latest_lookup:
+                console.print(f"[bold green]✓ Version {version} verified[/bold green]")
+            break
+
         if not result.version_exists and not is_latest_lookup and not result.requires_user_selection:
             display_name = f"{name} (canonical: {result.package_name})" if (result.package_name and result.package_name.lower() != name.lower()) else name
             console.print(f"\n[bold green]✓ {display_name} identified[/bold green]")
@@ -176,7 +186,7 @@ def scan_single_package_menu():
             if not is_latest_lookup:
                 console.print(f"[bold green]✓ Version {version} verified[/bold green]")
             
-            if result.provider is None:
+            if result.provider is None and not result.is_standalone:
                 console.print("[yellow]⚠ Vulnerability intelligence unavailable for this ecosystem.[/yellow]")
                 
             break
@@ -203,15 +213,16 @@ def scan_single_package_menu():
             
         break
 
-    if result.provider is None:
+    if result.provider is None and not result.is_standalone:
         console.print("[red]Unable to proceed without a supported vulnerability provider.[/red]")
         return
         
     from pulse.domain.models import PackageInfo
     effective_name = result.package_name if (result and result.package_name) else name
-    pkg = PackageInfo(name=effective_name, version="" if is_latest_lookup else version, ecosystem=result.provider.manifest.ecosystem)
+    eco_str = result.provider.manifest.ecosystem if result.provider else (result.ecosystem or "Standalone")
+    pkg = PackageInfo(name=effective_name, version="" if is_latest_lookup else version, ecosystem=eco_str)
     
-    target_id = f"{result.provider.manifest.ecosystem}:{effective_name.lower()}"
+    target_id = f"{eco_str}:{effective_name.lower()}"
     
     orchestrator = ScannerOrchestrator()
     scan_result = orchestrator.run_targeted_scan(console, [pkg], target_type="package", target_id=target_id)

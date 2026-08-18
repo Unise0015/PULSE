@@ -183,14 +183,15 @@ def resolve_technology_package(
             result = asyncio.run(resolver.resolve(raw_name, clean_version))
 
         if result and result.package_exists and result.ecosystem and (result.confidence or 0) >= 50:
-            return PackageIdentity(
-                name=result.package_name,
-                version=clean_version,
-                ecosystem=result.ecosystem,
-                registry=result.registry_name,
-                confidence=float(result.confidence or 75.0),
-                source="package_resolution_service"
-            )
+            if not getattr(result, "is_standalone", False) and result.ecosystem != "Standalone Software":
+                return PackageIdentity(
+                    name=result.package_name,
+                    version=clean_version,
+                    ecosystem=result.ecosystem,
+                    registry=result.registry_name,
+                    confidence=float(result.confidence or 75.0),
+                    source="package_resolution_service"
+                )
     except Exception as e:
         logger.debug("PackageResolutionService resolution failed for '%s': %s", raw_name, e)
 

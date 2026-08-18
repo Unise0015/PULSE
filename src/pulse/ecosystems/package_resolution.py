@@ -82,6 +82,9 @@ class PackageResolutionResult:
     package_metadata: Dict[str, Any] = field(default_factory=dict)
     
     network_error: bool = False
+    is_standalone: bool = False
+    warning_message: Optional[str] = None
+    cpe_candidates: List[str] = field(default_factory=list)
 
 
 class PackageResolutionService:
@@ -113,7 +116,17 @@ class PackageResolutionService:
                 latest = data.get("info", {}).get("version")
                 has_version = True
                 if version:
-                    has_version = version in data.get("releases", {})
+                    releases = data.get("releases", {})
+                    clean_ver = version.lstrip("vV ")
+                    norm_ver = clean_ver[:-2] if clean_ver.endswith(".0") and clean_ver.count(".") == 2 else clean_ver
+                    alt_zero = f"{clean_ver}.0" if clean_ver.count(".") == 1 else clean_ver
+                    has_version = (
+                        version in releases or
+                        clean_ver in releases or
+                        norm_ver in releases or
+                        alt_zero in releases or
+                        f"v{clean_ver}" in releases
+                    )
                 return RegistryValidationResult(True, has_version, latest, False, 200)
             return RegistryValidationResult(False, False, None, True, resp.status_code)
         except Exception:
@@ -427,6 +440,32 @@ class PackageResolutionService:
                         # Replace unverified candidate if present
                         candidates = [c for c in candidates if c.ecosystem.lower() != nr.ecosystem.lower()]
                         candidates.append(nr)
+
+        # ── Smart Disambiguation & Pure Collision Check ──
+        from pulse.ecosystems.smart_disambiguation import PackageDisambiguator
+        any_version_verified = any(c.version_exists for c in candidates)
+        if not any_version_verified:
+            eval_res = PackageDisambiguator.evaluate(
+                package_name=package_name,
+                requested_version=version,
+                candidate_ecosystem=candidates[0].ecosystem if candidates else None,
+                candidate_version_exists=False,
+                candidate_description=candidates[0].description if candidates else None
+            )
+            if eval_res.is_standalone:
+                result.package_name = package_name
+                result.ecosystem = "Standalone Software"
+                result.registry_name = "NVD / Linux Distros"
+                result.package_exists = True
+                result.version_exists = True
+                result.version_verified = True
+                result.confidence = eval_res.confidence
+                result.requires_user_selection = False
+                result.resolution_reason = eval_res.warning_message or "Resolved to Standalone Infrastructure / Web Server"
+                result.is_standalone = True
+                result.warning_message = eval_res.warning_message
+                result.cpe_candidates = eval_res.cpe_candidates or []
+                return result
 
         # ── Score All Candidates ──
         for c in candidates:
