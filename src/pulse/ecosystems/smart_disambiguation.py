@@ -9,7 +9,7 @@ Distinguishes between:
 import logging
 import re
 from enum import Enum
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Optional, Dict, Tuple, Any
 
 from pulse.vulnerability.cpe_resolver import KNOWN_VENDOR_LINEAGES
@@ -43,7 +43,7 @@ class DisambiguationAnalysis:
     recommended_ecosystem: str
     is_standalone: bool = False
     warning_message: Optional[str] = None
-    cpe_candidates: List[str] = None
+    cpe_candidates: List[str] = field(default_factory=list)
 
 
 class PackageDisambiguator:
