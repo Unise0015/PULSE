@@ -1,0 +1,445 @@
+{
+    "_meta": {
+        "description": "Curated mapping of top ecosystem packages to their official NVD CPE 2.3 vendor:product identifiers.",
+        "version": "1.0.0",
+        "last_updated": "2026-08-20"
+    },
+    "pypi": {
+        "django": {
+            "vendor": "djangoproject",
+            "product": "django",
+            "cpe": "cpe:2.3:a:djangoproject:django"
+        },
+        "flask": {
+            "vendor": "palletsprojects",
+            "product": "flask",
+            "cpe": "cpe:2.3:a:palletsprojects:flask"
+        },
+        "requests": {
+            "vendor": "python-requests",
+            "product": "requests",
+            "cpe": "cpe:2.3:a:python-requests:requests"
+        },
+        "urllib3": {
+            "vendor": "python",
+            "product": "urllib3",
+            "cpe": "cpe:2.3:a:python:urllib3"
+        },
+        "pillow": {
+            "vendor": "python",
+            "product": "pillow",
+            "cpe": "cpe:2.3:a:python:pillow"
+        },
+        "cryptography": {
+            "vendor": "cryptography_project",
+            "product": "cryptography",
+            "cpe": "cpe:2.3:a:cryptography_project:cryptography"
+        },
+        "pyjwt": {
+            "vendor": "pyjwt_project",
+            "product": "pyjwt",
+            "cpe": "cpe:2.3:a:pyjwt_project:pyjwt"
+        },
+        "jinja2": {
+            "vendor": "palletsprojects",
+            "product": "jinja",
+            "cpe": "cpe:2.3:a:palletsprojects:jinja"
+        },
+        "werkzeug": {
+            "vendor": "palletsprojects",
+            "product": "werkzeug",
+            "cpe": "cpe:2.3:a:palletsprojects:werkzeug"
+        },
+        "celery": {
+            "vendor": "celeryproject",
+            "product": "celery",
+            "cpe": "cpe:2.3:a:celeryproject:celery"
+        },
+        "sqlalchemy": {
+            "vendor": "sqlalchemy",
+            "product": "sqlalchemy",
+            "cpe": "cpe:2.3:a:sqlalchemy:sqlalchemy"
+        },
+        "fastapi": {
+            "vendor": "tiangolo",
+            "product": "fastapi",
+            "cpe": "cpe:2.3:a:tiangolo:fastapi"
+        },
+        "numpy": {
+            "vendor": "numpy",
+            "product": "numpy",
+            "cpe": "cpe:2.3:a:numpy:numpy"
+        },
+        "paramiko": {
+            "vendor": "paramiko",
+            "product": "paramiko",
+            "cpe": "cpe:2.3:a:paramiko:paramiko"
+        },
+        "tornado": {
+            "vendor": "tornadoweb",
+            "product": "tornado",
+            "cpe": "cpe:2.3:a:tornadoweb:tornado"
+        },
+        "gunicorn": {
+            "vendor": "gunicorn",
+            "product": "gunicorn",
+            "cpe": "cpe:2.3:a:gunicorn:gunicorn"
+        },
+        "aiohttp": {
+            "vendor": "aiohttp",
+            "product": "aiohttp",
+            "cpe": "cpe:2.3:a:aiohttp:aiohttp"
+        },
+        "setuptools": {
+            "vendor": "python",
+            "product": "setuptools",
+            "cpe": "cpe:2.3:a:python:setuptools"
+        },
+        "pip": {
+            "vendor": "pypa",
+            "product": "pip",
+            "cpe": "cpe:2.3:a:pypa:pip"
+        },
+        "scrapy": {
+            "vendor": "scrapy",
+            "product": "scrapy",
+            "cpe": "cpe:2.3:a:scrapy:scrapy"
+        },
+        "tensorflow": {
+            "vendor": "google",
+            "product": "tensorflow",
+            "cpe": "cpe:2.3:a:google:tensorflow"
+        },
+        "lxml": {
+            "vendor": "lxml",
+            "product": "lxml",
+            "cpe": "cpe:2.3:a:lxml:lxml"
+        },
+        "pyyaml": {
+            "vendor": "pyyaml",
+            "product": "pyyaml",
+            "cpe": "cpe:2.3:a:pyyaml:pyyaml"
+        },
+        "ansible": {
+            "vendor": "redhat",
+            "product": "ansible",
+            "cpe": "cpe:2.3:a:redhat:ansible"
+        }
+    },
+    "npm": {
+        "express": {
+            "vendor": "expressjs",
+            "product": "express",
+            "cpe": "cpe:2.3:a:expressjs:express"
+        },
+        "next": {
+            "vendor": "vercel",
+            "product": "next.js",
+            "cpe": "cpe:2.3:a:vercel:next.js"
+        },
+        "react": {
+            "vendor": "facebook",
+            "product": "react",
+            "cpe": "cpe:2.3:a:facebook:react"
+        },
+        "vue": {
+            "vendor": "vuejs",
+            "product": "vue.js",
+            "cpe": "cpe:2.3:a:vuejs:vue.js"
+        },
+        "@angular/core": {
+            "vendor": "google",
+            "product": "angular",
+            "cpe": "cpe:2.3:a:google:angular"
+        },
+        "jquery": {
+            "vendor": "jquery",
+            "product": "jquery",
+            "cpe": "cpe:2.3:a:jquery:jquery"
+        },
+        "lodash": {
+            "vendor": "lodash",
+            "product": "lodash",
+            "cpe": "cpe:2.3:a:lodash:lodash"
+        },
+        "axios": {
+            "vendor": "axios",
+            "product": "axios",
+            "cpe": "cpe:2.3:a:axios:axios"
+        },
+        "webpack": {
+            "vendor": "webpack.js",
+            "product": "webpack",
+            "cpe": "cpe:2.3:a:webpack.js:webpack"
+        },
+        "minimist": {
+            "vendor": "minimist_project",
+            "product": "minimist",
+            "cpe": "cpe:2.3:a:minimist_project:minimist"
+        },
+        "node-fetch": {
+            "vendor": "node-fetch_project",
+            "product": "node-fetch",
+            "cpe": "cpe:2.3:a:node-fetch_project:node-fetch"
+        },
+        "jsonwebtoken": {
+            "vendor": "auth0",
+            "product": "jsonwebtoken",
+            "cpe": "cpe:2.3:a:auth0:jsonwebtoken"
+        },
+        "socket.io": {
+            "vendor": "socket",
+            "product": "socket.io",
+            "cpe": "cpe:2.3:a:socket:socket.io"
+        },
+        "nuxt": {
+            "vendor": "nuxtjs",
+            "product": "nuxt.js",
+            "cpe": "cpe:2.3:a:nuxtjs:nuxt.js"
+        },
+        "svelte": {
+            "vendor": "svelte",
+            "product": "svelte",
+            "cpe": "cpe:2.3:a:svelte:svelte"
+        },
+        "vite": {
+            "vendor": "vitejs",
+            "product": "vite",
+            "cpe": "cpe:2.3:a:vitejs:vite"
+        },
+        "moment": {
+            "vendor": "momentjs",
+            "product": "moment",
+            "cpe": "cpe:2.3:a:momentjs:moment"
+        },
+        "tar": {
+            "vendor": "npm",
+            "product": "tar",
+            "cpe": "cpe:2.3:a:npm:tar"
+        },
+        "marked": {
+            "vendor": "marked_project",
+            "product": "marked",
+            "cpe": "cpe:2.3:a:marked_project:marked"
+        },
+        "underscore": {
+            "vendor": "underscorejs",
+            "product": "underscore",
+            "cpe": "cpe:2.3:a:underscorejs:underscore"
+        }
+    },
+    "crates.io": {
+        "hyper": {
+            "vendor": "hyper",
+            "product": "hyper",
+            "cpe": "cpe:2.3:a:hyper:hyper"
+        },
+        "actix-web": {
+            "vendor": "actix",
+            "product": "actix-web",
+            "cpe": "cpe:2.3:a:actix:actix-web"
+        },
+        "tokio": {
+            "vendor": "tokio",
+            "product": "tokio",
+            "cpe": "cpe:2.3:a:tokio:tokio"
+        },
+        "openssl": {
+            "vendor": "openssl",
+            "product": "openssl",
+            "cpe": "cpe:2.3:a:openssl:openssl"
+        }
+    },
+    "Go": {
+        "golang.org/x/crypto": {
+            "vendor": "golang",
+            "product": "crypto",
+            "cpe": "cpe:2.3:a:golang:crypto"
+        },
+        "golang.org/x/net": {
+            "vendor": "golang",
+            "product": "net",
+            "cpe": "cpe:2.3:a:golang:net"
+        },
+        "golang.org/x/text": {
+            "vendor": "golang",
+            "product": "text",
+            "cpe": "cpe:2.3:a:golang:text"
+        },
+        "github.com/gin-gonic/gin": {
+            "vendor": "gin-gonic",
+            "product": "gin",
+            "cpe": "cpe:2.3:a:gin-gonic:gin"
+        },
+        "github.com/hashicorp/consul": {
+            "vendor": "hashicorp",
+            "product": "consul",
+            "cpe": "cpe:2.3:a:hashicorp:consul"
+        },
+        "github.com/hashicorp/vault": {
+            "vendor": "hashicorp",
+            "product": "vault",
+            "cpe": "cpe:2.3:a:hashicorp:vault"
+        },
+        "github.com/hashicorp/terraform": {
+            "vendor": "hashicorp",
+            "product": "terraform",
+            "cpe": "cpe:2.3:a:hashicorp:terraform"
+        }
+    },
+    "Maven": {
+        "org.apache.logging.log4j:log4j-core": {
+            "vendor": "apache",
+            "product": "log4j",
+            "cpe": "cpe:2.3:a:apache:log4j"
+        },
+        "org.springframework:spring-core": {
+            "vendor": "vmware",
+            "product": "spring_framework",
+            "cpe": "cpe:2.3:a:vmware:spring_framework"
+        },
+        "org.springframework.boot:spring-boot": {
+            "vendor": "vmware",
+            "product": "spring_boot",
+            "cpe": "cpe:2.3:a:vmware:spring_boot"
+        },
+        "com.fasterxml.jackson.core:jackson-databind": {
+            "vendor": "fasterxml",
+            "product": "jackson-databind",
+            "cpe": "cpe:2.3:a:fasterxml:jackson-databind"
+        },
+        "org.apache.struts:struts2-core": {
+            "vendor": "apache",
+            "product": "struts",
+            "cpe": "cpe:2.3:a:apache:struts"
+        },
+        "org.apache.tomcat:tomcat": {
+            "vendor": "apache",
+            "product": "tomcat",
+            "cpe": "cpe:2.3:a:apache:tomcat"
+        }
+    },
+    "Packagist": {
+        "laravel/framework": {
+            "vendor": "laravel",
+            "product": "laravel",
+            "cpe": "cpe:2.3:a:laravel:laravel"
+        },
+        "symfony/symfony": {
+            "vendor": "symfony",
+            "product": "symfony",
+            "cpe": "cpe:2.3:a:symfony:symfony"
+        },
+        "guzzlehttp/guzzle": {
+            "vendor": "guzzlephp",
+            "product": "guzzle",
+            "cpe": "cpe:2.3:a:guzzlephp:guzzle"
+        }
+    },
+    "RubyGems": {
+        "rails": {
+            "vendor": "rubyonrails",
+            "product": "rails",
+            "cpe": "cpe:2.3:a:rubyonrails:rails"
+        },
+        "rack": {
+            "vendor": "rack_project",
+            "product": "rack",
+            "cpe": "cpe:2.3:a:rack_project:rack"
+        },
+        "nokogiri": {
+            "vendor": "nokogiri",
+            "product": "nokogiri",
+            "cpe": "cpe:2.3:a:nokogiri:nokogiri"
+        },
+        "puma": {
+            "vendor": "puma",
+            "product": "puma",
+            "cpe": "cpe:2.3:a:puma:puma"
+        }
+    },
+    "NuGet": {
+        "Newtonsoft.Json": {
+            "vendor": "newtonsoft",
+            "product": "json.net",
+            "cpe": "cpe:2.3:a:newtonsoft:json.net"
+        }
+    },
+    "infrastructure": {
+        "nginx": {
+            "vendor": "f5",
+            "product": "nginx",
+            "cpe": "cpe:2.3:a:f5:nginx"
+        },
+        "apache": {
+            "vendor": "apache",
+            "product": "http_server",
+            "cpe": "cpe:2.3:a:apache:http_server"
+        },
+        "httpd": {
+            "vendor": "apache",
+            "product": "http_server",
+            "cpe": "cpe:2.3:a:apache:http_server"
+        },
+        "openssl": {
+            "vendor": "openssl",
+            "product": "openssl",
+            "cpe": "cpe:2.3:a:openssl:openssl"
+        },
+        "redis": {
+            "vendor": "redis",
+            "product": "redis",
+            "cpe": "cpe:2.3:a:redis:redis"
+        },
+        "postgresql": {
+            "vendor": "postgresql",
+            "product": "postgresql",
+            "cpe": "cpe:2.3:a:postgresql:postgresql"
+        },
+        "mysql": {
+            "vendor": "oracle",
+            "product": "mysql",
+            "cpe": "cpe:2.3:a:oracle:mysql"
+        },
+        "mongodb": {
+            "vendor": "mongodb",
+            "product": "mongodb",
+            "cpe": "cpe:2.3:a:mongodb:mongodb"
+        },
+        "elasticsearch": {
+            "vendor": "elastic",
+            "product": "elasticsearch",
+            "cpe": "cpe:2.3:a:elastic:elasticsearch"
+        },
+        "php": {
+            "vendor": "php",
+            "product": "php",
+            "cpe": "cpe:2.3:a:php:php"
+        },
+        "wordpress": {
+            "vendor": "wordpress",
+            "product": "wordpress",
+            "cpe": "cpe:2.3:a:wordpress:wordpress"
+        },
+        "grafana": {
+            "vendor": "grafana",
+            "product": "grafana",
+            "cpe": "cpe:2.3:a:grafana:grafana"
+        },
+        "jenkins": {
+            "vendor": "jenkins",
+            "product": "jenkins",
+            "cpe": "cpe:2.3:a:jenkins:jenkins"
+        },
+        "kubernetes": {
+            "vendor": "kubernetes",
+            "product": "kubernetes",
+            "cpe": "cpe:2.3:a:kubernetes:kubernetes"
+        },
+        "docker": {
+            "vendor": "docker",
+            "product": "docker",
+            "cpe": "cpe:2.3:a:docker:docker"
+        }
+    }
+}

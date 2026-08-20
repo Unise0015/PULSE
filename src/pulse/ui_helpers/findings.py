@@ -23,9 +23,20 @@ def build_finding_context(table: Table, pkg, finding: VulnerabilityFinding, rec,
     table.add_row("CWE Classification", f"[yellow]{cwe_str}[/yellow]")
     table.add_row("Severity", f"[{sev_color}]{sev_display}[/{sev_color}]")
     table.add_row("CVSS Score", f"[{sev_color}]{finding.cvss_score}[/{sev_color}]")
-    if finding.epss_percent is not None:
-        table.add_row("EPSS Percentile", str(finding.epss_percent))
+    
+    if finding.cve_id and finding.cve_id.startswith("CVE-"):
+        if finding.epss_percent is not None:
+            table.add_row("EPSS Percentile", str(finding.epss_percent))
+    else:
+        table.add_row("EPSS Percentile", "N/A (Ecosystem)")
+        
     table.add_row("KEV Match", format_kev(finding))
+    if getattr(finding, "kev_match", False):
+        if getattr(finding, "kev_due_date", None):
+            table.add_row("KEV Due Date", f"[bold red]{finding.kev_due_date}[/bold red]")
+        if getattr(finding, "ransomware_campaign", False):
+            table.add_row("Known Ransomware", "[bold red]YES[/bold red]")
+            
     table.add_row("Risk Heat Score", f"[bold magenta]{finding.risk_heat_score}[/bold magenta]")
 
 def build_vulnerability_summary(table: Table, finding: VulnerabilityFinding):

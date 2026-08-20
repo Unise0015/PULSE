@@ -66,7 +66,11 @@ class VulnerabilityDataValidator:
 
     @classmethod
     def validate_nvd_record(cls, record: Dict[str, Any]) -> bool:
-        """Validates an NVD source record."""
+        """Validates an NVD source record.
+        
+        Rejected CVEs are discarded (return False).
+        Reserved CVEs are allowed through but should be tagged for reconciliation.
+        """
         # Support both wrapper dictionary {"cve": cve_dict} and direct cve_dict
         cve_data = record.get("cve")
         if cve_data is None or not isinstance(cve_data, dict):
@@ -77,8 +81,10 @@ class VulnerabilityDataValidator:
             return False
             
         vuln_status = cve_data.get("vulnStatus", "").lower()
-        if vuln_status in ["rejected", "reserved"]:
+        if vuln_status == "rejected":
             return False
+        # Reserved CVEs are allowed through — they'll be tagged with
+        # vuln_status="Reserved" and reconciled on future scans
             
         return True
         

@@ -128,6 +128,10 @@ class VulnerabilityFinding:
     source_asset: Optional[str] = None
     detection_confidence: int = 0
     source_evidence: List[str] = field(default_factory=list)
+    kev_due_date: Optional[str] = None
+    ransomware_campaign: bool = False
+    vuln_status: Optional[str] = None          # "Analyzed", "Reserved", "Rejected", etc.
+    reconciled_at: Optional[str] = None         # ISO timestamp when Reserved CVE was reconciled
 
     @property
     def cwe_id(self) -> Optional[str]:

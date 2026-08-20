@@ -1400,6 +1400,11 @@ Examples:
     docs_parser = subparsers.add_parser("docs", help="Documentation generation commands")
     docs_parser.add_argument("docs_type", nargs="?", choices=["config"], default="config", help="Documentation type to generate")
     
+    # pulse cpe
+    cpe_parser = subparsers.add_parser("cpe", help="CPE mapping management")
+    cpe_parser.add_argument("cpe_action", choices=["forget"], help="CPE management action")
+    cpe_parser.add_argument("package", help="The package name to target")
+    
     args = parser.parse_args()
     
     from pulse.state import AppState, SummaryMode
@@ -1438,6 +1443,15 @@ Examples:
             return
         elif args.command == "docs":
             handle_docs_cli(args)
+            return
+        elif args.command == "cpe":
+            if args.cpe_action == "forget":
+                from pulse.enrichment.nvd.cpe_resolver import TieredCPEResolver
+                resolver = TieredCPEResolver()
+                if resolver.forget_cpe_mapping(args.package):
+                    console.print(f"[bold green]✓ Deleted CPE mapping and dictionary cache for '{args.package}'.[/bold green]")
+                else:
+                    console.print(f"[yellow]⚠ No dynamic CPE mapping or cache found for '{args.package}'.[/yellow]")
             return
         
         if not args.no_banner:
