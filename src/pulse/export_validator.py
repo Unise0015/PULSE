@@ -64,5 +64,3 @@ class ExportValidator:
             return False
             
         return True
-
-    @classmethod
