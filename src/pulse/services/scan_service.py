@@ -4,7 +4,7 @@ import hashlib
 import logging
 from datetime import datetime
 from pathlib import Path
-from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeRemainingColumn, TimeElapsedColumn
 
 from pulse.domain.models import ScanResult, VulnerabilityFinding, PluginExecutionStatus, PluginDiagnostics
 from pulse.ecosystems import registry
@@ -61,6 +61,10 @@ class ScanService:
         with Progress(
             SpinnerColumn(spinner_name="line"),
             TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TimeElapsedColumn(),
+            TimeRemainingColumn(),
             transient=True,
         ) as progress:
             # 1. Discovering packages
@@ -103,9 +107,10 @@ class ScanService:
             pass
 
             # 2. Run Enrichment Pipeline
+            progress.update(task1, completed=100, total=100, description="[green]Packages discovered[/green]")
             pipeline = EnrichmentPipeline()
-            pipeline_progress = progress if AppState.DEBUG_MODE else None
-            enrich_result = pipeline.run(all_packages, progress=pipeline_progress, context=context)
+            # Always show pipeline progress
+            enrich_result = pipeline.run(all_packages, progress=progress, context=context)
             findings = enrich_result.findings
         
         # Calculate Attack Surface Score

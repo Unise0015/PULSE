@@ -348,14 +348,24 @@ class EnrichmentPipeline:
             metrics=EnrichmentMetrics()
         )
         
+        main_task = None
+        if progress:
+            main_task = progress.add_task("[bold blue]Vulnerability Intelligence Pipeline[/bold blue]", total=len(self.stages))
+        
         for stage_cls in self.stages:
+            if progress and main_task is not None:
+                progress.update(main_task, description=f"[bold blue]Running {stage_cls.__name__}...[/bold blue]")
             try:
                 stage = stage_cls()
-                stage.enrich(result, progress, context)
+                # Suppress the nested tasks within stages since we have a main pipeline progress now
+                stage.enrich(result, None, context)
             except Exception as e:
                 msg = f"Enrichment stage {stage_cls.__name__} failed: {e}"
                 logger.error(msg, exc_info=True)
                 result.warnings.append(msg)
+            
+            if progress and main_task is not None:
+                progress.advance(main_task)
                 
         from pulse.domain.models import deduplicate_and_merge_findings
         result.findings = deduplicate_and_merge_findings(result.findings)
