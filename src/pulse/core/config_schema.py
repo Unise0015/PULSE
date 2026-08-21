@@ -115,7 +115,7 @@ CONFIG_SCHEMA: Dict[str, ConfigOption] = {
         default="table",
         description="Default CLI output format",
         category="General",
-        validator=_choice(("table", "json", "html", "markdown", "sarif", "csv")),
+        validator=_choice(("table", "json", "html", "markdown", "csv")),
         type_converter=lambda v: str(v).strip().lower()
     ),
     "OFFLINE_MODE": ConfigOption(
@@ -170,7 +170,7 @@ CONFIG_SCHEMA: Dict[str, ConfigOption] = {
         default="HTML",
         description="Default format for report export workflows",
         category="Reporting",
-        validator=_choice(("HTML", "JSON", "Markdown", "SARIF", "CSV")),
+        validator=_choice(("HTML", "JSON", "Markdown", "CSV")),
         type_converter=lambda v: str(v).strip().upper()
     ),
     "REPORT_CUSTOM_DIR": ConfigOption(

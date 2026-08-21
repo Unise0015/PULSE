@@ -154,7 +154,15 @@ class PluginRegistry:
             context = context_or_path
         else:
             context = ScanContext(root=Path(context_or_path), config=ScannerConfig(), cache=None, history=None, logger=logging.getLogger())
-        return [p for p in self.load() if p.detect(context)]
+            
+        from pulse.state import AppState
+        applicable_plugins = [p for p in self.load() if p.detect(context)]
+        
+        # If running an explicit System Discovery, ONLY run the system_host plugin.
+        if AppState.SYSTEM_SCAN:
+            return [p for p in applicable_plugins if p.manifest.id == "system_host"]
+            
+        return applicable_plugins
 
     def discover(self, context_or_path: Any) -> List[PackageInfo]:
         if isinstance(context_or_path, Path):

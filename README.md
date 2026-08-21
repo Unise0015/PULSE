@@ -40,7 +40,7 @@
                                 └──────────────────┬───────────────────┘
                                                    ▼
                                 ┌──────────────────────────────────────┐
-                                │   HTML • SARIF • CycloneDX • JSON    │
+                                │   HTML •  •  • JSON    │
                                 └──────────────────────────────────────┘
 ```
 
@@ -72,8 +72,8 @@
 
 ### 5. Enterprise Reporting, SBOM & History Tracking
 - **Interactive HTML Dashboard:** Modern dark-mode dashboard with Chart.js vulnerability distributions, risk heatmaps, and remediation action cards.
-- **SARIF 2.1.0:** Full compatibility with GitHub Code Scanning and CI/CD security gates.
-- **CycloneDX 1.4 SBOM:** Standards-compliant Software Bill of Materials with standardized Package URLs (PURLs).
+- ** 2.1.0:** Full compatibility with GitHub Code Scanning and CI/CD security gates.
+- ** 1.4 SBOM:** Standards-compliant Software Bill of Materials with standardized Package URLs (PURLs).
 - **Structured JSON & Markdown:** JSON Schema 2.0 and GitHub-flavored markdown export.
 - **Persistent Scan History:** SQLite-backed audit log tracking posture deltas (new vs resolved CVEs, risk trajectory) across scans.
 
@@ -264,8 +264,8 @@ $$\\text{Risk Heat Score} = (\\text{CVSS Base} \\times 5.0) + (\\text{EPSS Proba
 ## Export & Report Formats
 
 - **Interactive HTML:** Self-contained single-page application with dark theme, responsive Chart.js visual graphs, risk score cards, and upgrade commands.
-- **SARIF 2.1.0:** Static Analysis Results Interchange Format for automated GitHub Code Scanning alerts.
-- **CycloneDX 1.4 SBOM:** Standardized Software Bill of Materials capturing package components, versions, licenses, and PURLs.
+- ** 2.1.0:** Static Analysis Results Interchange Format for automated GitHub Code Scanning alerts.
+- ** 1.4 SBOM:** Standardized Software Bill of Materials capturing package components, versions, licenses, and PURLs.
 - **Structured JSON (Schema 2.0):** Complete machine-readable data payload for custom automation and SIEM ingestion.
 - **Markdown & CSV:** Human-readable tables for pull requests, issue tracking, and spreadsheets.
 

@@ -73,10 +73,15 @@ class OSVEnricher(BaseEnricher):
             context.phase = ScanPhase.CORRELATION
             
         if progress:
-            task = progress.add_task("[yellow]Matching vulnerabilities (OSV / NVD)...[/yellow]", total=None)
-        
+            osv_task = progress.add_task("[yellow]Querying OSV Database[/yellow]", total=len(data.packages))
+        else:
+            osv_task = None
+            
         osv_provider = OSVProvider()
-        findings = osv_provider.lookup_packages(data.packages)
+        findings = osv_provider.lookup_packages(data.packages, progress=progress, task_id=osv_task)
+        
+        if progress and osv_task is not None:
+            progress.remove_task(osv_task)
         for f in findings:
             raw = f.description or ""
             f.summary = raw[:250] + "..." if len(raw) > 250 else raw
@@ -90,38 +95,36 @@ class OSVEnricher(BaseEnricher):
         
         if unmatched_packages:
             try:
-                from pulse.website.technology_catalog import TECHNOLOGY_CATALOG
+                from pulse.enrichment.nvd.cpe_resolver import TieredCPEResolver
                 from pulse.enrichment.nvd.correlator import NVDCorrelationEngine
                 from pulse.correlation.models import CorrelationResult, CPECandidate, ResolverMatchType
                 from pulse.domain.models import FindingSourceType
                 
+                cpe_resolver = TieredCPEResolver()
                 cpe_results = []
                 pkg_map = {}
+                
+                cpe_task = None
+                if progress:
+                    cpe_task = progress.add_task("[cyan]NVD CPE Resolution[/cyan]", total=len(unmatched_packages))
+                    
                 for pkg in unmatched_packages:
                     norm = pkg.name.lower()
-                    cat_entry = TECHNOLOGY_CATALOG.get(norm)
-                    cpe_base = cat_entry.get("cpe") if cat_entry else None
-                    if not cpe_base and norm == "php":
-                        cpe_base = "cpe:2.3:a:php:php"
-                    elif not cpe_base and norm == "nginx":
-                        cpe_base = "cpe:2.3:a:nginx:nginx"
-                    elif not cpe_base and norm in ("apache", "httpd"):
-                        cpe_base = "cpe:2.3:a:apache:http_server"
-                        
-                    if cpe_base:
-                        parts = cpe_base.split(":")
-                        vendor = parts[3] if len(parts) > 3 else norm
-                        product = parts[4] if len(parts) > 4 else norm
+                    resolution = cpe_resolver.resolve(pkg.name, pkg.ecosystem)
+                    if progress and cpe_task is not None:
+                        progress.advance(cpe_task)
+                    
+                    if resolution:
                         ver_str = pkg.version or "*"
-                        cpe_str = f"{cpe_base}:{ver_str}:*:*:*:*:*:*:*"
+                        cpe_str = f"{resolution.cpe_uri}:{ver_str}:*:*:*:*:*:*:*"
                         candidate = CPECandidate(
-                            cpe_template=f"{cpe_base}:*:*:*:*:*:*:*:*",
+                            cpe_template=f"{resolution.cpe_uri}:*:*:*:*:*:*:*:*",
                             detected_version=pkg.version,
                             resolved_cpe=cpe_str,
-                            confidence=100,
-                            source="technology_catalog",
-                            vendor=vendor,
-                            product=product,
+                            confidence=resolution.confidence,
+                            source=resolution.source,
+                            vendor=resolution.vendor,
+                            product=resolution.product,
                             exact_version_match=bool(pkg.version),
                             match_type=ResolverMatchType.EXACT
                         )
@@ -130,10 +133,13 @@ class OSVEnricher(BaseEnricher):
                             inventory_technology_key=norm,
                             candidates=[candidate],
                             selected_candidate=candidate,
-                            resolution_confidence=100
+                            resolution_confidence=resolution.confidence
                         )
                         cpe_results.append(cpe_res)
                         pkg_map[norm] = pkg
+                        
+                if progress and cpe_task is not None:
+                    progress.remove_task(cpe_task)
                         
                 if cpe_results:
                     engine = NVDCorrelationEngine()
@@ -239,6 +245,20 @@ class KEVEnricher(BaseEnricher):
         if progress:
             progress.update(task, completed=1, description="[green]KEV Matching[/green] completed")
 
+class ExploitIntelEnricher(BaseEnricher):
+    """Enriches findings with exploit intelligence (PoC, maturity)."""
+    
+    def enrich(self, data: EnrichmentResult, progress: Optional[Progress] = None, context: Any = None) -> None:
+        if not data.findings:
+            return
+        if progress:
+            task = progress.add_task("[yellow]Analyzing Exploit Intelligence...[/yellow]", total=None)
+            
+        ExploitIntelligenceAnalyzer.enrich_findings(data.findings)
+        
+        if progress:
+            progress.update(task, completed=1, description="[green]Exploit Intelligence[/green] completed")
+
 class RiskEnricher(BaseEnricher):
     """Calculates risk heat scores for all findings."""
     
@@ -258,13 +278,7 @@ class RiskEnricher(BaseEnricher):
         if progress:
             progress.update(task, completed=1, description="[green]Risk Scoring[/green] completed")
 
-class ExploitEnricher(BaseEnricher):
-    """Enriches findings with exploit maturity / public PoC records."""
-    
-    def enrich(self, data: EnrichmentResult, progress: Optional[Progress] = None, context: Any = None) -> None:
-        if not data.findings:
-            return
-        ExploitIntelligenceAnalyzer.enrich_findings(data.findings)
+
 
 class AttackPathEnricher(BaseEnricher):
     """Generates attack paths based on findings."""
@@ -324,8 +338,8 @@ DEFAULT_STAGES: List[Type[BaseEnricher]] = [
     EPSSEnricher,
     MITREEnricher,
     KEVEnricher,
+    ExploitIntelEnricher,
     RiskEnricher,
-    ExploitEnricher,
     AttackPathEnricher,
     RemediationEnricher
 ]

@@ -8,7 +8,7 @@ from rich.console import Console
 from pulse.banner import show_banner
 from pulse.config import load_config
 from pulse.history.db import init_db
-from pulse.reporter import generate_mock_scan_data, export_json, export_markdown, export_csv, export_html, export_sarif
+from pulse.reporter import generate_mock_scan_data, export_json, export_markdown, export_csv, export_html
 from pulse.scanner import ScannerOrchestrator
 from pulse.ui import (
     print_highest_risk_finding, print_findings_table, print_remediation_table,
@@ -83,6 +83,13 @@ def post_scan_render(console, scan: ScanResult):
                 summary_parts.append(f"{total_warnings} {warning_label}")
             console.print(f"\nCompleted with {', '.join(summary_parts)}.")
             
+    # Render Unsupported Packages if any
+    unsupported = getattr(scan, "unsupported_packages", [])
+    if unsupported:
+        console.print("\n[bold yellow]Unsupported Packages (Skipped):[/bold yellow]")
+        for pkg in unsupported:
+            console.print(f"  {bullet_char} [dim]{pkg.name}@{pkg.version} ({pkg.ecosystem})[/dim]")
+            
     compact = (AppState.SUMMARY_MODE == SummaryMode.COMPACT)
     print_security_summary(console, scan, compact=compact)
     
@@ -105,11 +112,24 @@ def post_scan_render(console, scan: ScanResult):
 
 
 def auto_discover():
-    orchestrator = ScannerOrchestrator()
-    scan_result = orchestrator.run_auto_discover_scan(console)
-    AppState.LAST_SCAN = scan_result
-    post_scan_render(console, scan_result)
-    post_scan_menu(scan_result)
+    from pulse.state import AppState
+    from pulse.discoverers.system.linux import LinuxHostDiscoverer
+    # The user explicitly selected "System Discovery" from the interactive menu.
+    # This IS their opt-in — temporarily enable host scanning for this scan.
+    prev_SYSTEM_SCAN = AppState.SYSTEM_SCAN
+    AppState.SYSTEM_SCAN = True
+    try:
+        discoverer = LinuxHostDiscoverer()
+        if discoverer.is_applicable():
+            meta = discoverer.get_metadata()
+            console.print(f"\n[bold cyan]Host System Audit:[/bold cyan] {meta.os_name} | Kernel {meta.kernel_release} ({meta.architecture})")
+        orchestrator = ScannerOrchestrator()
+        scan_result = orchestrator.run_auto_discover_scan(console)
+        AppState.LAST_SCAN = scan_result
+        post_scan_render(console, scan_result)
+        post_scan_menu(scan_result)
+    finally:
+        AppState.SYSTEM_SCAN = prev_SYSTEM_SCAN
 
 def scan_single_package_menu():
     from pulse.ecosystems.package_resolution import PackageResolutionService
@@ -117,7 +137,7 @@ def scan_single_package_menu():
     import os
     import asyncio
     
-    console.print("\n[bold]Scan a Package Across Any Supported Ecosystem[/bold]")
+    console.print("\n[bold]Scan Target[/bold]")
     resolver = PackageResolutionService()
     
     name = None
@@ -140,7 +160,14 @@ def scan_single_package_menu():
             
         is_latest_lookup = version.lower() in ("latest", "*")
         
-        with console.status("[cyan]Detecting package...[/cyan]", spinner="dots"):
+        from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+        with Progress(
+            SpinnerColumn("dots", style="bold cyan"),
+            TextColumn("[bold cyan]Detecting package...[/bold cyan]"),
+            TimeElapsedColumn(),
+            console=console
+        ) as progress:
+            progress.add_task("detect", total=None)
             result = asyncio.run(resolver.resolve(name, None if is_latest_lookup else version))
             
         if not result.candidates:
@@ -220,7 +247,7 @@ def scan_single_package_menu():
     post_scan_menu(scan_result)
 
 def scan_file_menu():
-    console.print("\n[bold]Scan Packages from File[/bold]")
+    console.print("\n[bold]Scan Project[/bold]")
     user_input = questionary.text("Enter file path:").ask()
     if not user_input or not user_input.strip():
         return
@@ -300,7 +327,7 @@ def scan_file_menu():
     post_scan_menu(scan_result)
 
 def lookup_cve_menu():
-    console.print("\n[bold]Lookup CVE[/bold]")
+    console.print("\n[bold]CVE Lookup[/bold]")
     cve_id = questionary.text("Enter CVE ID (e.g. CVE-2022-34265):").ask()
     if not cve_id:
         return
@@ -314,7 +341,7 @@ def lookup_cve_menu():
     orchestrator.lookup_cve(console, cve_id)
 
 def website_assessment_menu():
-    console.print("\n[bold]Website Technology Assessment[/bold]")
+    console.print("\n[bold]Website Assessment[/bold]")
     url = questionary.text("Enter website URL (e.g. https://example.com):").ask()
     if not url:
         return
@@ -339,16 +366,16 @@ def website_post_scan_menu(scan: ScanResult):
             
         options = []
         if is_correlated:
-            options.append("Run Vulnerability Correlation ✓")
+            options.append("Correlate Technologies ✓")
         else:
-            options.append("Run Vulnerability Correlation")
+            options.append("Correlate Technologies")
             
-        options.append("View Technologies")
-        options.append("View Security Headers")
+        options.append("Technologies")
+        options.append("Security")
         
         if is_correlated:
-            options.append("View Detected Vulnerabilities")
-            options.append("View Attack Paths")
+            options.append("Vulnerabilities")
+            options.append("Attack Paths")
             
         options.append("Export Report")
         options.append("Back to Main Menu")
@@ -357,70 +384,60 @@ def website_post_scan_menu(scan: ScanResult):
         
         if choice == "Back to Main Menu" or not choice:
             break
-        elif choice == "View Technologies":
+        elif choice == "Technologies":
             print_technologies_view(console, scan)
-        elif choice == "View Security Headers":
+        elif choice == "Security":
             print_security_headers_view(console, scan)
-        elif choice in ("Run Vulnerability Correlation", "Run Vulnerability Correlation ✓"):
+        elif choice in ("Correlate Technologies", "Correlate Technologies ✓"):
             orchestrator = ScannerOrchestrator()
             orchestrator.analyze_website_technologies(console, scan)
             print_website_assessment_summary(console, scan)
-        elif choice == "View Detected Vulnerabilities":
+        elif choice == "Vulnerabilities":
             print_findings_table(console, scan.findings)
-        elif choice == "View Attack Paths":
+        elif choice == "Attack Paths":
             print_top_attack_paths(console, scan)
         elif choice == "Export Report":
             export_last_scan_menu()
 
 def post_scan_menu(scan: ScanResult):
-    if not scan.findings:
-        return
-
     while True:
+        choices = []
+        if scan.findings:
+            choices.extend([
+                "Findings",
+                "Remediation",
+                "Attack Paths",
+                "Threat Intelligence",
+            ])
+            
+        if scan.target_type != "package":
+            choices.append("View Scanned Packages")
+            
+        choices.extend([
+            questionary.Separator("────────────────────────────"),
+            "Export Report",
+            "Back to Main Menu"
+        ])
+        
         choice = questionary.select(
             "\nPost-Scan Actions:",
-            choices=[
-                "View Critical Vulnerabilities",
-                "View All Findings",
-                "View Package Upgrade Recommendations",
-                "View Attack Paths",
-                "View Exploit Intelligence",
-                "View Dependency Tree",
-                questionary.Separator("────────────────────────────"),
-                "Export Report",
-                "Return to Main Menu"
-            ]
+            choices=choices
         ).ask()
 
-        if choice == "Return to Main Menu" or choice is None:
+        if choice in ("Back to Main Menu", "Return to Main Menu") or choice is None:
             break
-        elif choice == "View Critical Vulnerabilities":
-            severities = [f.cvss_severity.upper() for f in scan.findings if getattr(f, "cvss_severity", None)]
-            if "CRITICAL" in severities:
-                target_sev = "CRITICAL"
-            elif "HIGH" in severities:
-                target_sev = "HIGH"
-            elif "MEDIUM" in severities:
-                target_sev = "MEDIUM"
-            elif "LOW" in severities:
-                target_sev = "LOW"
-            else:
-                target_sev = "CRITICAL"
-
-            filtered = [f for f in scan.findings if getattr(f, "cvss_severity", "").upper() == target_sev]
-            title = f"{target_sev.capitalize()} Vulnerabilities"
-            print_findings_table(console, filtered, title=title)
-        elif choice == "View All Findings":
+        elif choice == "Findings":
             from pulse.ui import render_all_findings_paginated
             render_all_findings_paginated(console, scan)
-        elif choice == "View Package Upgrade Recommendations":
+        elif choice == "Remediation":
             print_remediation_table(console, scan)
-        elif choice == "View Attack Paths":
+        elif choice == "Attack Paths":
             print_top_attack_paths(console, scan)
-        elif choice == "View Exploit Intelligence":
+        elif choice == "Threat Intelligence":
             print_exploit_intelligence_view(console, scan)
-        elif choice == "View Dependency Tree":
-            print_dependency_tree_view(console, scan)
+        elif choice == "View Scanned Packages":
+            from pulse.ui import render_all_packages_paginated
+            render_all_packages_paginated(console, scan)
         elif choice == "Export Report":
             export_workflow(scan)
 
@@ -442,8 +459,7 @@ def export_workflow(scan: ScanResult):
             "HTML Dashboard (Primary)",
             "JSON (Schema 2.0)",
             "Markdown Document",
-            "SARIF (CI/CD Integration)",
-            "Export SBOM (CycloneDX)"
+            "Plain Text Document"
         ]
     ).ask()
 
@@ -474,45 +490,126 @@ def export_workflow(scan: ScanResult):
         md_file = generated.get("markdown", out_path)
         history.register_report_artifact(scan_id, "markdown", str(md_file.resolve()))
         console.print(f"[bold green]✓ Exported Markdown to:[/bold green]\n  {md_file.resolve()}")
-    elif format_choice == "SARIF (CI/CD Integration)":
-        out_path = ReportPathResolver.resolve("report", timestamp=now, extension="sarif.json")
-        generated = ReportService.generate_reports(ctx, formats=["sarif"], custom_output_dir=out_path.parent)
-        sarif_file = generated.get("sarif", out_path)
-        history.register_report_artifact(scan_id, "sarif", str(sarif_file.resolve()))
-        console.print(f"[bold green]✓ Exported SARIF to:[/bold green]\n  {sarif_file.resolve()}")
-    elif format_choice == "Export SBOM (CycloneDX)":
-        out_path = ReportPathResolver.resolve("sbom", timestamp=now, extension="json")
-        from pulse.supply_chain.sbom import export_cyclonedx
-        export_cyclonedx(scan, out_path)
-        history.register_report_artifact(scan_id, "sbom", str(out_path.resolve()))
-        console.print(f"[bold green]✓ Exported CycloneDX SBOM to:[/bold green]\n  {out_path.resolve()}")
+    elif format_choice == "Plain Text Document":
+        out_path = ReportPathResolver.resolve("report", timestamp=now, extension="txt")
+        generated = ReportService.generate_reports(ctx, formats=["txt"], custom_output_dir=out_path.parent)
+        txt_file = generated.get("txt", out_path)
+        history.register_report_artifact(scan_id, "txt", str(txt_file.resolve()))
+        console.print(f"[bold green]✓ Exported Plain Text to:[/bold green]\n  {txt_file.resolve()}")
 
 
 def export_last_scan_menu():
     reports_menu()
 
+
+def results_findings_view():
+    """Displays findings from the last 3 scans in a minimal table."""
+    from pulse.history import HistoryService
+    from pulse.ui import get_severity_color
+    from rich.table import Table
+    from rich import box
+
+    history = HistoryService()
+    runs = history.get_scan_runs()
+
+    if not runs and not (AppState.LAST_SCAN and AppState.LAST_SCAN.findings):
+        console.print("\n[yellow]No recent findings found. Please run a scan first.[/yellow]\n")
+        return
+
+    recent_runs = runs[:3]
+    all_findings = []
+
+    if AppState.LAST_SCAN and AppState.LAST_SCAN.findings:
+        all_findings.extend(AppState.LAST_SCAN.findings)
+
+    for r in recent_runs:
+        scan_id = r.get("id")
+        scan = history.get_scan_by_id(scan_id)
+        if scan and scan.findings:
+            existing_keys = {(f.cve_id, getattr(f.package, "name", None), getattr(f.package, "version", None)) for f in all_findings}
+            for f in scan.findings:
+                key = (f.cve_id, getattr(f.package, "name", None), getattr(f.package, "version", None))
+                if key not in existing_keys:
+                    all_findings.append(f)
+                    existing_keys.add(key)
+
+    if not all_findings:
+        console.print("\n[green]No vulnerabilities detected in recent scans.[/green]\n")
+        return
+
+    table = Table(
+        title="[bold]Recent Findings (Last 3 Scans)[/bold]",
+        border_style="cyan",
+        show_lines=True,
+        box=box.SQUARE,
+    )
+    table.add_column("CVE ID",    style="bold cyan")
+    table.add_column("Package",   style="bold white")
+    table.add_column("Version",   style="dim")
+    table.add_column("Severity",  justify="center")
+    table.add_column("Score",     justify="right")
+
+    for f in all_findings:
+        pkg_name = f.package.name if f.package else "Unknown"
+        pkg_ver = f.package.version if f.package else "—"
+        sev = (f.cvss_severity or "UNKNOWN").upper()
+        sev_color = get_severity_color(sev)
+        score_str = f"{f.cvss_score:.1f}" if f.cvss_score is not None else "—"
+
+        table.add_row(
+            f.cve_id,
+            pkg_name,
+            pkg_ver,
+            f"[{sev_color}]{sev}[/{sev_color}]",
+            f"[bold yellow]{score_str}[/bold yellow]"
+        )
+
+    console.print(table)
+
+
+def results_menu():
+    """Results top-level menu."""
+    while True:
+        choice = questionary.select(
+            "Results",
+            choices=[
+                questionary.Choice("Findings", "findings", shortcut_key="1"),
+                questionary.Choice("Scan History", "history", shortcut_key="2"),
+                questionary.Choice("Reports", "reports", shortcut_key="3"),
+                questionary.Choice("Back", "back", shortcut_key="4"),
+            ]
+        ).ask()
+
+        if not choice or choice == "back":
+            break
+        elif choice == "findings":
+            results_findings_view()
+        elif choice == "history":
+            view_history_menu()
+        elif choice == "reports":
+            reports_menu()
+
+
 def reports_menu():
-    """Reports & Exports UX sub-menu."""
+    """Reports UX sub-menu."""
     from pulse.reporting.report_service import ReportService
     from pulse.history import HistoryService
 
     while True:
         choice = questionary.select(
-            "Reports & Exports Menu:",
+            "Reports",
             choices=[
-                "Open Last Report",
-                "Browse Report History",
-                "Export Current Scan",
-                "Open Reports Folder",
-                "Report Settings",
-                "Back to Main Menu"
+                questionary.Choice("Open Latest Report", "latest", shortcut_key="1"),
+                questionary.Choice("Browse Reports", "browse", shortcut_key="2"),
+                questionary.Choice("Open Reports Folder", "folder", shortcut_key="3"),
+                questionary.Choice("Back", "back", shortcut_key="4")
             ]
         ).ask()
 
-        if not choice or choice == "Back to Main Menu":
+        if not choice or choice == "back":
             break
 
-        if choice == "Open Last Report":
+        if choice == "latest":
             last_info = ReportService.get_last_report()
             if not last_info:
                 console.print("\n[yellow]No scan reports exist yet. Please run a scan first.[/yellow]\n")
@@ -528,7 +625,7 @@ def reports_menu():
                 console.print(f"\n[bold green]Opening report:[/bold green] {last_info['html_path']}")
                 ReportService.open_report(last_info['html_path'])
 
-        elif choice == "Browse Report History":
+        elif choice == "browse":
             history = HistoryService()
             runs = history.get_scan_runs()
             if not runs:
@@ -556,25 +653,18 @@ def reports_menu():
                 else:
                     console.print(f"\n[yellow]Report file no longer exists at:[/yellow] {html_file}\n")
 
-        elif choice == "Export Current Scan":
-            if not AppState.LAST_SCAN:
-                console.print("\n[yellow]No active scan in current session. Please run a scan first.[/yellow]\n")
-                continue
-            export_workflow(AppState.LAST_SCAN)
-
-        elif choice == "Open Reports Folder":
+        elif choice == "folder":
             rdir = ReportService.get_reports_dir()
             console.print(f"\n[bold green]Reports directory:[/bold green] {rdir.resolve()}\n")
             try:
                 import os
+                import webbrowser
                 if os.name == 'nt':
                     os.startfile(rdir)
                 else:
                     webbrowser.open(rdir.as_uri())
             except Exception:
                 pass
-        elif choice == "Report Settings":
-            reporting_settings_menu()
 
 def history_settings_menu():
     """History Settings & Retention Management sub-menu."""
@@ -690,7 +780,7 @@ def reporting_settings_menu():
             break
 
         if choice.startswith("Default Format"):
-            new_fmt = questionary.select("Select Default Report Format:", choices=["HTML", "JSON", "Markdown", "SARIF", "All"]).ask()
+            new_fmt = questionary.select("Select Default Report Format:", choices=["HTML", "JSON", "Markdown", "Text", "All"]).ask()
             if new_fmt:
                 set_setting("REPORT_DEFAULT_FORMAT", new_fmt.lower())
                 console.print("[bold green]Default format updated![/bold green]")
@@ -739,28 +829,28 @@ def scanning_settings_menu():
             if new_cache and new_cache.isdigit():
                 set_setting("CACHE_DURATION", new_cache)
 def settings_menu():
-    """Expanded main Settings Menu with modular sub-systems."""
+    """Settings Menu with modular sub-systems."""
     while True:
         choice = questionary.select(
-            "Settings:",
+            "Settings",
             choices=[
-                "Scanning Settings",
-                "Reporting Settings",
-                "History Settings",
-                "API Keys & Credentials",
-                "Back to Main Menu"
+                questionary.Choice("Scanning", "scanning", shortcut_key="1"),
+                questionary.Choice("Reporting", "reporting", shortcut_key="2"),
+                questionary.Choice("History", "history", shortcut_key="3"),
+                questionary.Choice("Credentials", "credentials", shortcut_key="4"),
+                questionary.Choice("Back", "back", shortcut_key="5"),
             ]
         ).ask()
         
-        if choice == "Back to Main Menu" or not choice:
+        if not choice or choice == "back":
             break
-        elif choice == "Scanning Settings":
+        elif choice == "scanning":
             scanning_settings_menu()
-        elif choice == "Reporting Settings":
+        elif choice == "reporting":
             reporting_settings_menu()
-        elif choice == "History Settings":
+        elif choice == "history":
             history_settings_menu()
-        elif choice == "API Keys & Credentials":
+        elif choice == "credentials":
             manage_keys_menu()
 
 def view_history_menu():
@@ -881,7 +971,7 @@ def help_menu():
                 " • [bold white]Website Assessment:[/bold white] Declarative technology fingerprinting + canonical vulnerability correlation.\n"
                 " • [bold white]Direct CVE Lookup:[/bold white] Query enriched NVD, EPSS, KEV, and ATT&CK intelligence by CVE ID.\n"
                 " • [bold white]Remediation Advisor:[/bold white] Verified-safe upgrade candidate evaluation with breaking-change risk rating.\n"
-                " • [bold white]Multi-Format Reports:[/bold white] HTML Dashboard, JSON Schema 2.0, SARIF 2.1.0, Markdown, CSV, and CycloneDX SBOM."
+                " • [bold white]Multi-Format Reports:[/bold white] HTML Dashboard, JSON Schema 2.0, Markdown, CSV, ."
             )
             console.print(Panel(
                 overview_text,
@@ -1063,26 +1153,24 @@ def startup_health_check():
 def interactive_menu():
     """Main interactive menu loop."""
     choices = [
-        questionary.Choice("Scan a Package Across Any Supported Ecosystem", "scan_package", shortcut_key="1"),
-        questionary.Choice("Auto-discover & scan all packages", "auto_discover", shortcut_key="2"),
-        questionary.Choice("Scan from file (requirements.txt / package.json)", "scan_file", shortcut_key="3"),
-        questionary.Choice("Lookup a CVE ID directly", "lookup_cve", shortcut_key="4"),
-        questionary.Choice("Website Technology Assessment", "website_assessment", shortcut_key="5"),
-        questionary.Choice("Export last scan report", "export_report", shortcut_key="6"),
-        questionary.Choice("View scan history", "view_history", shortcut_key="7"),
-        questionary.Choice("Settings", "settings", shortcut_key="8"),
+        questionary.Choice("Scan Target", "scan_target", shortcut_key="1"),
+        questionary.Choice("Scan Project", "scan_project", shortcut_key="2"),
+        questionary.Choice("System Discovery", "system_discovery", shortcut_key="3"),
+        questionary.Choice("Website Assessment", "website_assessment", shortcut_key="4"),
+        questionary.Choice("CVE Lookup", "cve_lookup", shortcut_key="5"),
+        questionary.Choice("Results", "results", shortcut_key="6"),
+        questionary.Choice("Settings", "settings", shortcut_key="7"),
         questionary.Choice("Help", "help", shortcut_key="h"),
         questionary.Choice("Exit", "exit", shortcut_key="0"),
     ]
 
     action_map = {
-        "scan_package": scan_single_package_menu,
-        "auto_discover": auto_discover,
-        "scan_file": scan_file_menu,
-        "lookup_cve": lookup_cve_menu,
+        "scan_target": scan_single_package_menu,
+        "scan_project": scan_file_menu,
+        "system_discovery": auto_discover,
         "website_assessment": website_assessment_menu,
-        "export_report": export_last_scan_menu,
-        "view_history": view_history_menu,
+        "cve_lookup": lookup_cve_menu,
+        "results": results_menu,
         "settings": settings_menu,
         "help": help_menu,
     }
@@ -1339,6 +1427,11 @@ Examples:
     docs_parser = subparsers.add_parser("docs", help="Documentation generation commands")
     docs_parser.add_argument("docs_type", nargs="?", choices=["config"], default="config", help="Documentation type to generate")
     
+    # pulse cpe
+    cpe_parser = subparsers.add_parser("cpe", help="CPE mapping management")
+    cpe_parser.add_argument("cpe_action", choices=["forget"], help="CPE management action")
+    cpe_parser.add_argument("package", help="The package name to target")
+    
     args = parser.parse_args()
     
     from pulse.state import AppState, SummaryMode
@@ -1377,6 +1470,15 @@ Examples:
             return
         elif args.command == "docs":
             handle_docs_cli(args)
+            return
+        elif args.command == "cpe":
+            if args.cpe_action == "forget":
+                from pulse.enrichment.nvd.cpe_resolver import TieredCPEResolver
+                resolver = TieredCPEResolver()
+                if resolver.forget_cpe_mapping(args.package):
+                    console.print(f"[bold green]✓ Deleted CPE mapping and dictionary cache for '{args.package}'.[/bold green]")
+                else:
+                    console.print(f"[yellow]⚠ No dynamic CPE mapping or cache found for '{args.package}'.[/yellow]")
             return
         
         if not args.no_banner:

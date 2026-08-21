@@ -65,7 +65,7 @@ def render_provider_statistics(console, scan: ScanResult):
     from pulse.core.provider_health import provider_tracker, ProviderStatus
 
     health_map = provider_tracker.get_all_health()
-    table = Table(title="[bold cyan]Provider Statistics[/bold cyan]", box=box.ROUNDED, expand=True)
+    table = Table(title="[bold cyan]Provider Statistics[/bold cyan]", box=box.HEAVY_EDGE, expand=True)
     table.add_column("Provider", style="bold white")
     table.add_column("Status", justify="center")
     table.add_column("Records", justify="center")
@@ -117,7 +117,7 @@ def render_scan_integrity(console, scan: ScanResult):
     console.print(Panel(
         f"[{integ_color}]Scan Integrity: {integrity.value}[/{integ_color}]\n\n{reason_text}",
         title="[bold white]Intelligence Confidence & Scan Integrity[/bold white]",
-        box=box.SQUARE,
+        box=box.HEAVY_EDGE,
         expand=False
     ))
 
@@ -153,7 +153,7 @@ def render_validation_summary(console, scan: ScanResult):
     console.print(Panel(
         "\n".join(val_lines),
         title="[bold white]Validation Summary[/bold white]",
-        box=box.ROUNDED,
+        box=box.HEAVY_EDGE,
         expand=False
     ))
 
@@ -179,7 +179,7 @@ def render_performance_summary(console, scan: ScanResult):
     for p_name, p_health in health_map.items():
         text.append(f"  - {p_name:<24} {int(p_health.duration_ms)} ms\n")
 
-    console.print(Panel(text, title="[bold white]Performance Metrics[/bold white]", box=box.ROUNDED, expand=False))
+    console.print(Panel(text, title="[bold white]Performance Metrics[/bold white]", box=box.HEAVY_EDGE, expand=False))
 
 
 def print_provider_observability(console, scan: ScanResult):
@@ -191,9 +191,12 @@ def print_provider_observability(console, scan: ScanResult):
 
 def print_security_summary(console, scan: ScanResult, compact: bool = False):
     if not scan.findings and scan.vulnerable_packages_count == 0:
+        summary_text = Text()
+        summary_text.append(f"{'Dependencies Scanned:':<28} {scan.packages_scanned}\n", style="bold")
+        summary_text.append(f"[bold green]No vulnerabilities detected[/bold green]")
         console.print(Panel(
-            "[bold green]No vulnerabilities detected[/bold green]",
-            box=box.SQUARE,
+            summary_text,
+            box=box.HEAVY_EDGE,
             expand=False,
             title="[bold green]Security Summary[/bold green]"
         ))
@@ -210,7 +213,7 @@ def print_security_summary(console, scan: ScanResult, compact: bool = False):
         for eco in scan.detected_ecosystems:
             text.append(f"  - {eco}\n")
 
-    console.print(Panel(text, title="[bold]Security Summary[/bold]", box=box.ROUNDED, expand=False))
+    console.print(Panel(text, title="[bold cyan]Security Summary[/bold cyan]", border_style="bright_cyan", box=box.HEAVY_EDGE, expand=False))
 
 def print_priority_summary(console, scan: ScanResult):
     metrics = getattr(scan, "supply_chain_metrics", None)
@@ -224,7 +227,7 @@ def print_priority_summary(console, scan: ScanResult):
     vt_style = "bold yellow" if metrics.vulnerable_transitive > 0 else "default"
     text.append(f"{'Vulnerable Transitive:':<28} {metrics.vulnerable_transitive}\n", style=vt_style)
 
-    console.print(Panel(text, title="[bold]Top Priorities[/bold]", box=box.ROUNDED, expand=False))
+    console.print(Panel(text, title="[bold magenta]Top Priorities[/bold magenta]", border_style="bright_magenta", box=box.HEAVY_EDGE, expand=False))
 
 def print_threat_summary(console, scan: ScanResult):
     text = Text()
@@ -262,7 +265,7 @@ def print_threat_summary(console, scan: ScanResult):
             text.append(f"    {tac:<26} ({count})\n")
 
     if has_data:
-        console.print(Panel(text, title="[bold]Threat Intelligence[/bold]", box=box.ROUNDED, expand=False))
+        console.print(Panel(text, title="[bold yellow]Threat Intelligence[/bold yellow]", border_style="bright_yellow", box=box.HEAVY_EDGE, expand=False))
 
 def print_supply_chain_summary(console, scan: ScanResult):
     metrics = getattr(scan, "supply_chain_metrics", None)
@@ -274,7 +277,7 @@ def print_supply_chain_summary(console, scan: ScanResult):
     text.append(f"{'Transitive Dependencies:':<28} {metrics.transitive_count}\n")
     text.append(f"{'Max Dependency Depth:':<28} {metrics.max_depth}\n")
 
-    console.print(Panel(text, title="[bold]Supply Chain Analysis[/bold]", box=box.ROUNDED, expand=False))
+    console.print(Panel(text, title="[bold cyan]Supply Chain Analysis[/bold cyan]", border_style="bright_cyan", box=box.HEAVY_EDGE, expand=False))
 
 def print_attack_paths(console, scan: ScanResult):
     if not getattr(scan, "attack_paths", []):
@@ -288,13 +291,13 @@ def print_attack_paths(console, scan: ScanResult):
     text.append(f"{'Attack Paths Identified:':<28} {len(scan.attack_paths)}\n")
     text.append(f"{'KEV-Backed Paths:':<28} {kev_backed}\n")
     
-    console.print(Panel(text, title="[bold]Exposure Metrics[/bold]", box=box.ROUNDED, expand=False))
+    console.print(Panel(text, title="[bold red]Exposure Metrics[/bold red]", border_style="bright_red", box=box.HEAVY_EDGE, expand=False))
 
 def print_trend_summary(console, delta: Optional[PostureDelta]):
     text = Text()
     if not delta:
         text.append("First scan for this target\n", style="italic dim")
-        console.print(Panel(text, title="[bold]Trend Analysis[/bold]", box=box.ROUNDED, expand=False))
+        console.print(Panel(text, title="[bold white]Trend Analysis[/bold white]", border_style="bright_white", box=box.HEAVY_EDGE, expand=False))
         return
 
     prev_score = getattr(delta, "previous_score", 0)
@@ -348,7 +351,7 @@ def print_trend_summary(console, delta: Optional[PostureDelta]):
     trend_style = "bold red" if trend_str == "Degraded" else "bold green" if trend_str == "Improved" else "bold yellow"
     text.append(f"{'Trend:':<28} {trend_str}\n", style=trend_style)
 
-    console.print(Panel(text, title="[bold]Trend Analysis[/bold]", box=box.ROUNDED, expand=False))
+    console.print(Panel(text, title="[bold white]Trend Analysis[/bold white]", border_style="bright_white", box=box.HEAVY_EDGE, expand=False))
 
 
 def print_highest_risk_finding(console, finding: VulnerabilityFinding, scan: Optional[ScanResult] = None):
@@ -396,7 +399,7 @@ def print_highest_risk_finding(console, finding: VulnerabilityFinding, scan: Opt
         table,
         title=panel_title,
         border_style=border_style,
-        box=box.SQUARE,
+        box=box.HEAVY_EDGE,
         expand=False
     ))
 
@@ -434,7 +437,7 @@ def print_remediation_table(console, scan: ScanResult):
     version_table = Table(
         title="[bold cyan]Package Upgrade Dashboard[/bold cyan]",
         border_style="cyan",
-        box=box.ROUNDED,
+        box=box.HEAVY_EDGE,
         show_lines=True,
     )
     version_table.add_column("Package",                  style="bold white",  min_width=14)
@@ -519,7 +522,7 @@ def print_remediation_table(console, scan: ScanResult):
                 panel_text,
                 title=f"[bold white]Remediation Strategy — {rec.package}[/bold white]",
                 border_style="cyan",
-                box=box.ROUNDED,
+                box=box.HEAVY_EDGE,
                 expand=False
             ))
 
@@ -571,7 +574,7 @@ def print_findings_table(console, findings: List[VulnerabilityFinding], title: s
         title=f"[bold]{title}[/bold]{paging_info}",
         border_style="cyan",
         show_lines=True,
-        box=box.SQUARE,
+        box=box.HEAVY_EDGE,
     )
     table.add_column("Package",       style="bold white")
     table.add_column("CVE",           style="bold cyan")
@@ -622,7 +625,7 @@ def render_all_findings_paginated(console, scan: Optional[ScanResult], page_size
         console.print(Panel(
             "[green]No vulnerabilities found.[/green]",
             title="[bold cyan]All Vulnerability Findings[/bold cyan]",
-            box=box.SQUARE,
+            box=box.HEAVY_EDGE,
             expand=False
         ))
         if input_func:
@@ -647,7 +650,7 @@ def render_all_findings_paginated(console, scan: Optional[ScanResult], page_size
             title=f"[bold cyan]{title}[/bold cyan]",
             border_style="cyan",
             show_lines=True,
-            box=box.SQUARE,
+            box=box.HEAVY_EDGE,
         )
         table.add_column("Package",       style="bold white")
         table.add_column("CVE",           style="bold cyan")
@@ -729,7 +732,7 @@ def print_top_attack_paths(console, scan: ScanResult):
     table = Table(
         title="[bold red]Top Attack Paths[/bold red]",
         border_style="red",
-        box=box.SQUARE,
+        box=box.HEAVY_EDGE,
         show_lines=True,
     )
     table.add_column("Rank", justify="center", style="bold")
@@ -787,7 +790,7 @@ def print_exploit_intelligence_view(console, scan: ScanResult):
             "[dim]No confirmed public PoCs found for the scanned vulnerabilities.[/dim]",
             title="[bold yellow]Exploit Intelligence[/bold yellow]",
             border_style="yellow",
-            box=box.SQUARE,
+            box=box.HEAVY_EDGE,
             expand=False
         ))
         return
@@ -818,7 +821,7 @@ def print_exploit_intelligence_view(console, scan: ScanResult):
     table = Table(
         title="[bold yellow]Exploit Intelligence — Public PoCs[/bold yellow]",
         border_style="yellow",
-        box=box.SQUARE,
+        box=box.HEAVY_EDGE,
         show_lines=True,
     )
     table.add_column("CVE",              style="cyan",     min_width=18)
@@ -851,7 +854,7 @@ def print_exploit_intelligence_view(console, scan: ScanResult):
 
 def print_dependency_tree_view(console, scan: ScanResult):
     if not getattr(scan, "dependency_trees", None):
-        console.print(Panel("[yellow]No dependency tree data available for this scan.[/yellow]", box=box.SQUARE))
+        console.print(Panel("[yellow]No dependency tree data available for this scan.[/yellow]", box=box.HEAVY_EDGE))
         return
 
     console.print("\n[bold]Dependency Trees[/bold]")
@@ -949,7 +952,7 @@ def print_website_correlation_summary(console, scan: ScanResult):
         "".join(text),
         title="[bold]Website Correlation Summary[/bold]",
         border_style=status_color,
-        box=box.SQUARE,
+        box=box.HEAVY_EDGE,
         expand=False
     ))
 
@@ -1046,7 +1049,7 @@ def print_website_assessment_summary(console, scan: ScanResult):
         "".join(text),
         title="[bold]Website Assessment Summary[/bold]",
         border_style="cyan",
-        box=box.SQUARE,
+        box=box.HEAVY_EDGE,
         expand=False
     ))
 
@@ -1066,7 +1069,7 @@ def print_technologies_view(console, scan: ScanResult):
     table = Table(
         title=title,
         border_style="blue",
-        box=box.SQUARE,
+        box=box.HEAVY_EDGE,
         show_lines=True,
     )
     
@@ -1253,7 +1256,7 @@ def print_security_headers_view(console, scan: ScanResult):
     table = Table(
         title="[bold magenta]Security Headers Assessment[/bold magenta]",
         border_style="magenta",
-        box=box.SQUARE,
+        box=box.HEAVY_EDGE,
         show_lines=True,
     )
     table.add_column("Header", style="bold")
@@ -1358,6 +1361,78 @@ def render_cve_details(console, finding: VulnerabilityFinding) -> None:
         main_table,
         title=f"[bold cyan]Vulnerability Detail Inspection — {finding.cve_id}[/bold cyan]",
         border_style="cyan",
-        box=box.ROUNDED,
+        box=box.HEAVY_EDGE,
         expand=False
     ))
+
+
+def render_all_packages_paginated(console, scan, page_size: int = 50, input_func=None):
+    import questionary
+    
+    # Flatten packages from dependency trees
+    packages = []
+    if getattr(scan, "dependency_trees", None):
+        def extract_pkgs(node):
+            packages.append((node.package_name, node.version, node.ecosystem))
+            for child in node.children:
+                extract_pkgs(child)
+        for root_node in scan.dependency_trees:
+            extract_pkgs(root_node)
+            
+    # Deduplicate and sort
+    packages = sorted(list(set(packages)), key=lambda x: (x[2] or "", x[0] or "", x[1] or ""))
+    
+    if not packages:
+        console.print(Panel(
+            "[yellow]No packages were found during this scan.[/yellow]",
+            title="[bold cyan]Scanned Packages[/bold cyan]",
+            box=box.HEAVY_EDGE,
+            expand=False
+        ))
+        if input_func:
+            input_func("[Q] Back")
+        return
+
+    total_count = len(packages)
+    page = 0
+
+    while True:
+        start_idx = page * page_size
+        end_idx = min(start_idx + page_size, total_count)
+        page_packages = packages[start_idx:end_idx]
+
+        has_prev = page > 0
+        has_next = end_idx < total_count
+
+        title = f"Scanned Packages & Versions (Showing {start_idx + 1}–{end_idx} of {total_count})"
+
+        table = Table(
+            title=f"[bold cyan]{title}[/bold cyan]",
+            border_style="cyan",
+            show_lines=True,
+            box=box.HEAVY_EDGE,
+        )
+        table.add_column("Package Name", style="bold white")
+        table.add_column("Version", style="bold green")
+        table.add_column("Ecosystem", style="cyan")
+
+        for pkg in page_packages:
+            table.add_row(pkg[0], pkg[1] or "Unknown", pkg[2] or "Unknown")
+
+        console.print(table)
+
+        nav_choices = []
+        if has_prev:
+            nav_choices.append(questionary.Choice("Previous Page", "prev", shortcut_key="p"))
+        if has_next:
+            nav_choices.append(questionary.Choice("Next Page", "next", shortcut_key="n"))
+        nav_choices.append(questionary.Choice("Back to Menu", "back", shortcut_key="b"))
+
+        choice = (input_func or questionary.select("Navigation:", choices=nav_choices).ask)() if input_func else questionary.select("Navigation:", choices=nav_choices).ask()
+        
+        if choice == "prev" and has_prev:
+            page -= 1
+        elif choice == "next" and has_next:
+            page += 1
+        else:
+            break

@@ -8,7 +8,7 @@ from pulse.domain.models import ScanResult
 from pulse.reporting.context import ReportContext
 from pulse.reporting.builder import ReportBuilder
 from pulse.reporting.renderers import (
-    HTMLRenderer, MarkdownRenderer, JSONRenderer, SARIFRenderer
+    HTMLRenderer, MarkdownRenderer, JSONRenderer, TextRenderer
 )
 
 class ReportService:
@@ -29,7 +29,7 @@ class ReportService:
     ) -> Dict[str, Path]:
         """Generates requested report formats from ReportContext and saves them under scan_<scan_id>/."""
         if formats is None:
-            formats = ["html", "json", "markdown", "sarif"]
+            formats = ["html", "json", "markdown", "txt"]
 
         # Build canonical ReportModel
         report_model = ReportBuilder.build(context)
@@ -51,7 +51,8 @@ class ReportService:
             "json": (JSONRenderer(), f"report_{timestamp_str}.json"),
             "markdown": (MarkdownRenderer(), f"report_{timestamp_str}.md"),
             "md": (MarkdownRenderer(), f"report_{timestamp_str}.md"),
-            "sarif": (SARIFRenderer(), f"report_{timestamp_str}.sarif.json")
+            
+            "txt": (TextRenderer(), f"report_{timestamp_str}.txt")
         }
 
         generated_files: Dict[str, Path] = {}
@@ -192,7 +193,7 @@ class ReportService:
         if formats is None:
             default_fmt = get_setting("REPORT_DEFAULT_FORMAT", "html").lower()
             if default_fmt == "all":
-                fmt_list = ["html", "json", "markdown", "sarif"]
+                fmt_list = ["html", "json", "markdown"]
             else:
                 fmt_list = list(set([default_fmt, "html"]))
         else:

@@ -210,4 +210,46 @@ def init_db(db_path_override: Optional[Path] = None) -> None:
         ''')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_report_artifacts_scan ON report_artifacts(scan_id, format)')
         
+        # ── CPE Dictionary Cache (Tier 2 results, 30-day TTL) ──
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS cpe_dictionary_cache (
+                keyword       TEXT NOT NULL,
+                cpe_23_uri    TEXT NOT NULL,
+                vendor        TEXT,
+                product       TEXT,
+                confidence    INTEGER DEFAULT 0,
+                deprecated    INTEGER DEFAULT 0,
+                titles_json   TEXT,
+                refs_json     TEXT,
+                timestamp     DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY(keyword, cpe_23_uri)
+            )
+        ''')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_cpe_dict_keyword ON cpe_dictionary_cache(keyword)')
+        
+        # ── Dynamic CPE Crosswalk (auto-promoted high-confidence Tier 2 hits, 90-day TTL) ──
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS dynamic_cpe_crosswalk (
+                ecosystem     TEXT NOT NULL,
+                package_name  TEXT NOT NULL,
+                cpe_23_uri    TEXT NOT NULL,
+                vendor        TEXT,
+                product       TEXT,
+                confidence    INTEGER DEFAULT 0,
+                promoted_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY(ecosystem, package_name)
+            )
+        ''')
+        
+        # ── cve_events lifecycle columns for Reserved CVE reconciliation ──
+        cve_events_lifecycle_cols = [
+            ("vuln_status", "TEXT DEFAULT NULL"),
+            ("reconciled_at", "DATETIME DEFAULT NULL"),
+        ]
+        for col_name, col_def in cve_events_lifecycle_cols:
+            try:
+                cursor.execute(f"ALTER TABLE cve_events ADD COLUMN {col_name} {col_def}")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+        
         conn.commit()

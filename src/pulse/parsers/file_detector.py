@@ -13,6 +13,7 @@ from typing import Optional
 
 class DependencyFileType(Enum):
     PYTHON_REQUIREMENTS = "python_requirements"
+    PYPROJECT_TOML = "pyproject_toml"
     PACKAGE_JSON = "package_json"
     NPM_LOCK = "npm_lock"
     YARN_LOCK = "yarn_lock"
@@ -26,6 +27,12 @@ class DependencyFileType(Enum):
     COMPOSER_JSON = "composer_json"
     COMPOSER_LOCK = "composer_lock"
     MAVEN_POM = "maven_pom"
+    PIPFILE = "pipfile"
+    PIPFILE_LOCK = "pipfile_lock"
+    SETUP_PY = "setup_py"
+    GRADLE_BUILD = "gradle_build"
+    MIX_EXS = "mix_exs"
+    REBAR_CONFIG = "rebar_config"
     UNKNOWN = "unknown"
 
 
@@ -36,8 +43,8 @@ class DependencyFileDetector:
         "requirements.txt": DependencyFileType.PYTHON_REQUIREMENTS,
         "requirements.lock": DependencyFileType.PYTHON_REQUIREMENTS,
         "requirements.in": DependencyFileType.PYTHON_REQUIREMENTS,
-        "pipfile": DependencyFileType.PYTHON_REQUIREMENTS,
-        "pyproject.toml": DependencyFileType.PYTHON_REQUIREMENTS,
+        "pipfile": DependencyFileType.PIPFILE,
+        "pyproject.toml": DependencyFileType.PYPROJECT_TOML,
         "package.json": DependencyFileType.PACKAGE_JSON,
         "package-lock.json": DependencyFileType.NPM_LOCK,
         "yarn.lock": DependencyFileType.YARN_LOCK,
@@ -51,6 +58,11 @@ class DependencyFileDetector:
         "composer.json": DependencyFileType.COMPOSER_JSON,
         "composer.lock": DependencyFileType.COMPOSER_LOCK,
         "pom.xml": DependencyFileType.MAVEN_POM,
+        "pipfile.lock": DependencyFileType.PIPFILE_LOCK,
+        "setup.py": DependencyFileType.SETUP_PY,
+        "setup.cfg": DependencyFileType.SETUP_PY,
+        "mix.exs": DependencyFileType.MIX_EXS,
+        "rebar.config": DependencyFileType.REBAR_CONFIG,
     }
 
     @classmethod
