@@ -113,6 +113,13 @@ class ScanService:
             
         duration = round(time.time() - start_time, 2)
         
+        supported_ecosystems = {
+            "PyPI", "npm", "crates.io", "RubyGems", "Packagist",
+            "Go", "NuGet", "Maven", "Hackage", "Hex", "Pub", "SwiftURL",
+            "Debian", "Alpine", "Ubuntu", "NVD"
+        }
+        unsupported_packages = [p for p in all_packages if (p.ecosystem or "") not in supported_ecosystems]
+        
         scan_result = ScanResult(
             timestamp=datetime.now(),
             hostname=platform.node(),
@@ -125,7 +132,8 @@ class ScanService:
             plugin_diagnostics=plugin_diagnostics,
             target_type="project",
             target_id=Path(".").resolve().as_posix(),
-            target_fingerprint=compute_file_metadata_fingerprint(Path("."))
+            target_fingerprint=compute_file_metadata_fingerprint(Path(".")),
+            unsupported_packages=unsupported_packages
         )
         
         scan_result.attack_paths = enrich_result.attack_paths

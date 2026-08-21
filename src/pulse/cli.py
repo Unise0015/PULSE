@@ -83,6 +83,13 @@ def post_scan_render(console, scan: ScanResult):
                 summary_parts.append(f"{total_warnings} {warning_label}")
             console.print(f"\nCompleted with {', '.join(summary_parts)}.")
             
+    # Render Unsupported Packages if any
+    unsupported = getattr(scan, "unsupported_packages", [])
+    if unsupported:
+        console.print("\n[bold yellow]Unsupported Packages (Skipped):[/bold yellow]")
+        for pkg in unsupported:
+            console.print(f"  {bullet_char} [dim]{pkg.name}@{pkg.version} ({pkg.ecosystem})[/dim]")
+            
     compact = (AppState.SUMMARY_MODE == SummaryMode.COMPACT)
     print_security_summary(console, scan, compact=compact)
     
@@ -109,8 +116,8 @@ def auto_discover():
     from pulse.discoverers.system.linux import LinuxHostDiscoverer
     # The user explicitly selected "System Discovery" from the interactive menu.
     # This IS their opt-in — temporarily enable host scanning for this scan.
-    prev_include_host = AppState.INCLUDE_HOST
-    AppState.INCLUDE_HOST = True
+    prev_SYSTEM_SCAN = AppState.SYSTEM_SCAN
+    AppState.SYSTEM_SCAN = True
     try:
         discoverer = LinuxHostDiscoverer()
         if discoverer.is_applicable():
@@ -122,7 +129,7 @@ def auto_discover():
         post_scan_render(console, scan_result)
         post_scan_menu(scan_result)
     finally:
-        AppState.INCLUDE_HOST = prev_include_host
+        AppState.SYSTEM_SCAN = prev_SYSTEM_SCAN
 
 def scan_single_package_menu():
     from pulse.ecosystems.package_resolution import PackageResolutionService
@@ -1393,7 +1400,6 @@ Examples:
     parser.add_argument("--compact", action="store_true", help="Show compact executive summary only")
     parser.add_argument("--attack-paths", action="store_true", help="Enable attack path and exposure analysis")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging and diagnostic stack traces")
-    parser.add_argument("--include-host", action="store_true", help="Include host OS system packages (dpkg/apk) in scan results")
 
     subparsers = parser.add_subparsers(dest="command", help="Subcommands")
 
@@ -1437,7 +1443,6 @@ Examples:
     AppState.VERBOSE_MODE = args.verbose
     AppState.DEBUG_MODE = args.debug
     AppState.SHOW_ATTACK_PATHS = args.attack_paths
-    AppState.INCLUDE_HOST = args.include_host
     
     if args.compact:
         AppState.SUMMARY_MODE = SummaryMode.COMPACT

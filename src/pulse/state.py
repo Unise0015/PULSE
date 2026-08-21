@@ -14,5 +14,5 @@ class AppState:
     VERBOSE_MODE: bool = False
     DEBUG_MODE: bool = False
     SHOW_ATTACK_PATHS: bool = False
-    INCLUDE_HOST: bool = False
+    SYSTEM_SCAN: bool = False
     SUMMARY_MODE: SummaryMode = SummaryMode.NORMAL

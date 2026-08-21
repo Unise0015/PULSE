@@ -23,7 +23,7 @@ class HostSystemPlugin(EcosystemPlugin):
 
     def detect(self, context: ScanContext) -> bool:
         discoverer = LinuxHostDiscoverer()
-        return AppState.INCLUDE_HOST and discoverer.is_applicable()
+        return AppState.SYSTEM_SCAN and discoverer.is_applicable()
 
     def parse(self, context: ScanContext) -> List[RawDependency]:
         discoverer = LinuxHostDiscoverer()
