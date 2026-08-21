@@ -241,6 +241,14 @@ CONFIG_SCHEMA: Dict[str, ConfigOption] = {
         validator=_bool_valid,
         type_converter=_str_to_bool
     ),
+    "VERBOSE_MODE": ConfigOption(
+        key="VERBOSE_MODE",
+        default=False,
+        description="Enable verbose CLI output by default",
+        category="Logging",
+        validator=_bool_valid,
+        type_converter=_str_to_bool
+    ),
 
     # Networking
     "HTTP_TIMEOUT": ConfigOption(

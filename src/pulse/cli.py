@@ -808,10 +808,13 @@ def reporting_settings_menu():
 def scanning_settings_menu():
     while True:
         cache = get_setting("CACHE_DURATION", "24")
+        verbose_val = get_setting("VERBOSE_MODE", False)
+        verbose_str = "On" if str(verbose_val).lower() == "true" else "Off"
         choice = questionary.select(
             "Scanning Settings:",
             choices=[
                 f"Cache Duration: {cache}h",
+                f"Verbose Mode: {verbose_str}",
                 "Back to Settings"
             ]
         ).ask()
@@ -821,6 +824,11 @@ def scanning_settings_menu():
             new_cache = questionary.text("Enter cache duration in hours:").ask()
             if new_cache and new_cache.isdigit():
                 set_setting("CACHE_DURATION", new_cache)
+        elif choice.startswith("Verbose Mode"):
+            new_verbose = questionary.select("Enable Verbose Mode?", choices=["Yes", "No"]).ask()
+            if new_verbose:
+                set_setting("VERBOSE_MODE", "true" if new_verbose == "Yes" else "false")
+                console.print("[bold green]Verbose mode updated![/bold green]")
 def settings_menu():
     """Settings Menu with modular sub-systems."""
     while True:
@@ -1454,6 +1462,15 @@ Examples:
     try:
         load_config()
         init_db()
+        
+        # Apply VERBOSE_MODE setting if not overridden by CLI
+        if not args.verbose:
+            from pulse.config import get_setting
+            is_verbose = str(get_setting("VERBOSE_MODE", "false")).lower() == "true"
+            if is_verbose:
+                AppState.VERBOSE_MODE = True
+                if not args.compact:
+                    AppState.SUMMARY_MODE = SummaryMode.VERBOSE
 
         if args.command == "config":
             handle_config_cli(args)
