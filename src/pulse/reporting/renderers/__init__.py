@@ -10,6 +10,7 @@ __all__ = [
     "BaseRenderer",
     "JSONRenderer",
     "SARIFRenderer",
+    "TextRenderer",
     "MarkdownRenderer",
     "HTMLRenderer",
 ]

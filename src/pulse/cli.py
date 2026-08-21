@@ -452,8 +452,7 @@ def export_workflow(scan: ScanResult):
             "HTML Dashboard (Primary)",
             "JSON (Schema 2.0)",
             "Markdown Document",
-            "SARIF (CI/CD Integration)",
-            "Export SBOM (CycloneDX)"
+            "Plain Text Document"
         ]
     ).ask()
 
@@ -484,18 +483,12 @@ def export_workflow(scan: ScanResult):
         md_file = generated.get("markdown", out_path)
         history.register_report_artifact(scan_id, "markdown", str(md_file.resolve()))
         console.print(f"[bold green]✓ Exported Markdown to:[/bold green]\n  {md_file.resolve()}")
-    elif format_choice == "SARIF (CI/CD Integration)":
-        out_path = ReportPathResolver.resolve("report", timestamp=now, extension="sarif.json")
-        generated = ReportService.generate_reports(ctx, formats=["sarif"], custom_output_dir=out_path.parent)
-        sarif_file = generated.get("sarif", out_path)
-        history.register_report_artifact(scan_id, "sarif", str(sarif_file.resolve()))
-        console.print(f"[bold green]✓ Exported SARIF to:[/bold green]\n  {sarif_file.resolve()}")
-    elif format_choice == "Export SBOM (CycloneDX)":
-        out_path = ReportPathResolver.resolve("sbom", timestamp=now, extension="json")
-        from pulse.supply_chain.sbom import export_cyclonedx
-        export_cyclonedx(scan, out_path)
-        history.register_report_artifact(scan_id, "sbom", str(out_path.resolve()))
-        console.print(f"[bold green]✓ Exported CycloneDX SBOM to:[/bold green]\n  {out_path.resolve()}")
+    elif format_choice == "Plain Text Document":
+        out_path = ReportPathResolver.resolve("report", timestamp=now, extension="txt")
+        generated = ReportService.generate_reports(ctx, formats=["txt"], custom_output_dir=out_path.parent)
+        txt_file = generated.get("txt", out_path)
+        history.register_report_artifact(scan_id, "txt", str(txt_file.resolve()))
+        console.print(f"[bold green]✓ Exported Plain Text to:[/bold green]\n  {txt_file.resolve()}")
 
 
 def export_last_scan_menu():
