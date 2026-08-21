@@ -8,7 +8,7 @@ from rich.console import Console
 from pulse.banner import show_banner
 from pulse.config import load_config
 from pulse.history.db import init_db
-from pulse.reporter import generate_mock_scan_data, export_json, export_markdown, export_csv, export_html, export_sarif
+from pulse.reporter import generate_mock_scan_data, export_json, export_markdown, export_csv, export_html
 from pulse.scanner import ScannerOrchestrator
 from pulse.ui import (
     print_highest_risk_finding, print_findings_table, print_remediation_table,
@@ -773,7 +773,7 @@ def reporting_settings_menu():
             break
 
         if choice.startswith("Default Format"):
-            new_fmt = questionary.select("Select Default Report Format:", choices=["HTML", "JSON", "Markdown", "SARIF", "All"]).ask()
+            new_fmt = questionary.select("Select Default Report Format:", choices=["HTML", "JSON", "Markdown", "Text", "All"]).ask()
             if new_fmt:
                 set_setting("REPORT_DEFAULT_FORMAT", new_fmt.lower())
                 console.print("[bold green]Default format updated![/bold green]")
@@ -964,7 +964,7 @@ def help_menu():
                 " • [bold white]Website Assessment:[/bold white] Declarative technology fingerprinting + canonical vulnerability correlation.\n"
                 " • [bold white]Direct CVE Lookup:[/bold white] Query enriched NVD, EPSS, KEV, and ATT&CK intelligence by CVE ID.\n"
                 " • [bold white]Remediation Advisor:[/bold white] Verified-safe upgrade candidate evaluation with breaking-change risk rating.\n"
-                " • [bold white]Multi-Format Reports:[/bold white] HTML Dashboard, JSON Schema 2.0, SARIF 2.1.0, Markdown, CSV, and CycloneDX SBOM."
+                " • [bold white]Multi-Format Reports:[/bold white] HTML Dashboard, JSON Schema 2.0, Markdown, CSV, ."
             )
             console.print(Panel(
                 overview_text,

@@ -66,29 +66,3 @@ class ExportValidator:
         return True
 
     @classmethod
-    def validate_sarif_export(cls, export_data: str) -> bool:
-        """Validates SARIF schema compliance."""
-        try:
-            data = json.loads(export_data)
-        except json.JSONDecodeError:
-            return False
-            
-        if not isinstance(data, dict):
-            return False
-            
-        required_keys = {"$schema", "version", "runs"}
-        if not required_keys.issubset(data.keys()):
-            return False
-            
-        if data.get("version") != "2.1.0":
-            return False
-            
-        runs = data.get("runs")
-        if not isinstance(runs, list) or len(runs) == 0:
-            return False
-            
-        tool = runs[0].get("tool")
-        if not isinstance(tool, dict) or "driver" not in tool:
-            return False
-            
-        return True
