@@ -827,7 +827,11 @@ def scanning_settings_menu():
         elif choice.startswith("Verbose Mode"):
             new_verbose = questionary.select("Enable Verbose Mode?", choices=["Yes", "No"]).ask()
             if new_verbose:
-                set_setting("VERBOSE_MODE", "true" if new_verbose == "Yes" else "false")
+                is_verbose = new_verbose == "Yes"
+                set_setting("VERBOSE_MODE", "true" if is_verbose else "false")
+                from pulse.state import AppState, SummaryMode
+                AppState.VERBOSE_MODE = is_verbose
+                AppState.SUMMARY_MODE = SummaryMode.VERBOSE if is_verbose else SummaryMode.NORMAL
                 console.print("[bold green]Verbose mode updated![/bold green]")
 def settings_menu():
     """Settings Menu with modular sub-systems."""
