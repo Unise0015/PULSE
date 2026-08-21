@@ -403,8 +403,10 @@ def post_scan_menu(scan: ScanResult):
                 "Threat Intelligence",
             ])
             
+        if scan.target_type != "package":
+            choices.append("View Scanned Packages")
+            
         choices.extend([
-            "View Scanned Packages",
             questionary.Separator("────────────────────────────"),
             "Export Report",
             "Back to Main Menu"
