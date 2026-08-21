@@ -3,8 +3,10 @@ Name: pulse
 Version: 4.0.0
 Summary: Multi-ecosystem. Exploit-aware. Interactive. All local. PULSE Security Scanner CLI.
 Author: PULSE Security Team
+License: GPL-3.0-or-later
 Requires-Python: >=3.11
 Description-Content-Type: text/markdown
+License-File: LICENSE
 Requires-Dist: rich>=13.0.0
 Requires-Dist: questionary>=2.0.0
 Requires-Dist: httpx>=0.24.0
@@ -14,131 +16,281 @@ Requires-Dist: packaging>=23.0
 Requires-Dist: python-dotenv>=1.0.0
 Provides-Extra: dev
 Requires-Dist: pytest>=7.0.0; extra == "dev"
+Dynamic: license-file
 
-# PULSE CLI
+# PULSE — Package & Unified Lifecycle Security Engine
 
-A fast, developer-first, threat-aware vulnerability scanner and security intelligence CLI for software dependencies and web applications.
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+[![Python Version](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Ecosystems](https://img.shields.io/badge/ecosystems-14+-brightgreen.svg)](#supported-package-ecosystems)
+[![Threat Intel](https://img.shields.io/badge/intel-OSV%20%7C%20NVD%20%7C%20EPSS%20%7C%20KEV%20%7C%20ATT%26CK-orange.svg)](#vulnerability-intelligence--threat-enrichment)
+[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-lightgrey.svg)](#installation)
 
-PULSE goes beyond theoretical CVSS scores by fusing multi-source threat intelligence (OSV, NVD, EPSS, CISA KEV, MITRE ATT&CK) to prioritize real-world security risks with a proprietary **Risk Heat Score** and actionable, evidence-verified remediation recommendations.
-
----
-
-## Key Features
-
-- ⚡ **Multi-Ecosystem Discovery:** Parses and inspects dependencies across **Python**, **Node.js**, **Rust (Cargo)**, **Go**, **Ruby (Gems)**, **PHP (Composer)**, and **Java (Maven)**.
-- 🎯 **Threat-Aware Prioritization:** Sorts findings by the **Risk Heat Score** combining CVSS, EPSS 30-day exploit prediction probability, and CISA Known Exploited Vulnerability (KEV) active exploitation data.
-- 🛡️ **Verified Upgrade Recommendations:** Recommends exact version pins (e.g. `pip install Django==6.1` or `npm install react@18.3.1`) verified against advisory history to ensure recommended versions are never vulnerable.
-- 🗺️ **Human-Readable ATT&CK & CWE:** Displays official MITRE ATT&CK techniques (`T1190 — Exploit Public-Facing Application`) and CWE catalog names (`CWE-89 — SQL Injection`).
-- 📄 **Cross-Format Exporters:** Export interactive HTML dashboards, JSON (Schema 2.0), Markdown, CSV, SARIF (CI/CD), and CycloneDX SBOM reports directly to `~/Documents/PULSE Reports/`.
-- 🔍 **Interactive All Findings View:** Paginated, compact findings matrix supporting zero data loss across large datasets.
-- 📊 **Security Posture & History Tracking:** SQLite-backed tracking of Attack Surface Score evolution across scans with automatic delta reports.
-- 🌐 **Resilient Architecture:** Graceful degradation with local SQLite caching when network services are offline or rate-limited.
+**PULSE** is a high-performance, unified vulnerability intelligence, supply-chain analysis, and attack surface management CLI. It combines **14+ package ecosystems**, **3,000+ declarative web technology signatures**, and a multi-source threat intelligence pipeline (OSV, NVD, EPSS, CISA KEV, MITRE ATT&CK) to provide contextual, actionable security insights and verified-safe upgrade guidance.
 
 ---
 
-## Installation & Quick Start
+## Key Capabilities
+
+```
+                       ┌────────────────────────────────────────────────────────┐
+                       │                       PULSE CLI                        │
+                       │           (Interactive TUI & Headless CLI)             │
+                       └───────────────┬────────────────────────┬───────────────┘
+                                       │                        │
+                 ┌─────────────────────┴──────────┐  ┌──────────┴─────────────────────┐
+                 │    Package / Supply Chain      │  │      Website Assessment        │
+                 │   14+ Ecosystems & Lockfiles   │  │   3,000+ Declarative Signatures│
+                 └─────────────────────┬──────────┘  └──────────┬─────────────────────┘
+                                       │                        │
+                                       └───────────┬────────────┘
+                                                   ▼
+                                ┌──────────────────────────────────────┐
+                                │     Canonical Package Resolution     │
+                                └──────────────────┬───────────────────┘
+                                                   ▼
+                                ┌──────────────────────────────────────┐
+                                │     10-Stage Threat Enrichment       │
+                                │   OSV • NVD • EPSS • KEV • ATT&CK    │
+                                └──────────────────┬───────────────────┘
+                                                   ▼
+                                ┌──────────────────────────────────────┐
+                                │   Risk Heat Scoring (0 - 100)        │
+                                │   & Safe Upgrade Remediation Engine  │
+                                └──────────────────┬───────────────────┘
+                                                   ▼
+                                ┌──────────────────────────────────────┐
+                                │   HTML • SARIF • CycloneDX • JSON    │
+                                └──────────────────────────────────────┘
+```
+
+### 1. Unified Dependency & Package Scanning
+- **Targeted Package Scan:** Scan any package directly across 14+ ecosystems with dynamic registry validation.
+- **Auto-Discovery:** Recursively scan projects for manifests and lockfiles.
+- **File Scanning:** Directly inspect any `requirements.txt`, `package.json`, `Cargo.lock`, `go.mod`, `Gemfile`, `pom.xml`, etc.
+- **Universal Package Resolution:** Query 14+ live registries with `ecosyste.ms` API integration and local identity fallback.
+
+### 2. Declarative Website Technology Fingerprinting
+- **3,000+ Technology Signatures:** Multi-signal detection engine analyzing HTTP headers, DOM structure, meta tags, inline scripts, and script bundle URLs across 22 domain signature packs.
+- **Favicon Hash Fingerprinting:** MurmurHash3 (MMH3) favicon hashing for CDN and infrastructure recognition.
+- **HTTP Security Header Audit:** Evaluates HSTS, CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, and Permissions-Policy.
+- **Canonical Parity Correlation:** Correlates detected web technologies (e.g. `jQuery 1.7.2`, `Bootstrap 4.5.2`, `React 18.2.0`) through the exact same vulnerability pipeline used for package scans.
+- **Explicit Security States:** Distinguishes between *Vulnerable*, *Clean*, *Version Required*, *Detection Only*, and *Unavailable*.
+
+### 3. Vulnerability & Real-World Threat Intelligence
+- **OSV Database:** Precise open-source vulnerability records and Git commit advisory ranges.
+- **NVD & CPE 2.3 Matching:** Official NIST CVSS v3.1 / v2 metrics, CWE classifications, and vector strings.
+- **FIRST.org EPSS Scoring:** Real-time 30-day empirical probability of active exploitation in the wild.
+- **CISA KEV Integration:** Flags known exploited vulnerabilities actively targeted by threat actors.
+- **MITRE ATT&CK Mapping:** Maps vulnerabilities and CWE weaknesses to adversarial Tactics, Techniques, and Procedures (TTPs).
+- **Exploit Intelligence:** Detects proof-of-concept availability, exploit maturity, and weaponization status.
+
+### 4. Prioritization & Remediation Engine
+- **Composite Risk Heat Score (0–100):** Weighted risk formula combining CVSS Base (50%), EPSS Probability (30%), CISA KEV Multiplier (20%), and PoC maturity adjustments.
+- **Attack Path Synthesis:** Automatically builds exposure-scored vulnerability chains (KEV +40, EPSS>50% +25, CVSS>=9 +20, ATT&CK +10).
+- **Verified Safe Upgrade Advisor:** Evaluates upstream releases to recommend the minimum non-vulnerable version, breaking-change risk level (*Low*, *Medium*, *High*), and ready-to-run package manager commands.
+
+### 5. Enterprise Reporting, SBOM & History Tracking
+- **Interactive HTML Dashboard:** Modern dark-mode dashboard with Chart.js vulnerability distributions, risk heatmaps, and remediation action cards.
+- **SARIF 2.1.0:** Full compatibility with GitHub Code Scanning and CI/CD security gates.
+- **CycloneDX 1.4 SBOM:** Standards-compliant Software Bill of Materials with standardized Package URLs (PURLs).
+- **Structured JSON & Markdown:** JSON Schema 2.0 and GitHub-flavored markdown export.
+- **Persistent Scan History:** SQLite-backed audit log tracking posture deltas (new vs resolved CVEs, risk trajectory) across scans.
+
+---
+
+## Supported Package Ecosystems
+
+| Ecosystem | Registry | Default Manifest / Lockfiles | Resolution Engine |
+| :--- | :--- | :--- | :--- |
+| **Python** | PyPI | `requirements.txt`, `Pipfile(.lock)`, `poetry.lock`, `pyproject.toml`, `setup.py` | PyPI JSON API / AST Parser |
+| **Node.js** | npm | `package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml` | npm Registry API / AST |
+| **Rust** | crates.io | `Cargo.toml`, `Cargo.lock` | Crates.io API / TOML Parser |
+| **Go** | Go Modules | `go.mod`, `go.sum` | Go Proxy API / Mod Parser |
+| **Ruby** | RubyGems | `Gemfile`, `Gemfile.lock` | RubyGems API / Lockfile Parser |
+| **PHP** | Packagist | `composer.json`, `composer.lock` | Packagist API / Composer Parser |
+| **Java** | Maven Central | `pom.xml`, `build.gradle` | Maven Search API / XML Parser |
+| **.NET / C#** | NuGet | `*.csproj`, `packages.config`, `paket.lock` | NuGet v3 Service Index API |
+| **Dart / Flutter** | pub.dev | `pubspec.yaml`, `pubspec.lock` | Pub Registry API / YAML Parser |
+| **Elixir** | Hex.pm | `mix.exs`, `mix.lock` | Hex API / Mix Parser |
+| **C / C++** | Conan Center | `conanfile.txt`, `conanfile.py` | Conan Center API / Parser |
+| **Swift** | SwiftPM | `Package.swift`, `Package.resolved` | SwiftPM Manifest Parser |
+| **GitHub Actions** | GitHub | `.github/workflows/*.yml`, `action.yml` | Workflow AST & Tag Parser |
+| **IaC & Infrastructure** | Terraform & Helm | `*.tf`, `Chart.yaml`, `values.yaml` | Terraform Registry / Artifact Hub API |
+
+---
+
+## Installation
 
 ### Prerequisites
-- **Python:** Version 3.10 or higher (Python 3.11/3.12/3.14 recommended)
-- **Git:** Installed on your system
+- **Python 3.11+**
+- **pip** or **pipx**
 
-### 1. Download / Clone the Repository
-Open your terminal or command prompt and clone the repository:
+### Linux
 
 ```bash
-git clone https://github.com/your-username/pulse.git
-cd pulse
-```
+# Clone the repository
+git clone https://github.com/Unise0015/PULSE.git
+cd PULSE
 
-*(Alternatively, download the ZIP archive from GitHub and extract it to a directory on your machine.)*
-
-### 2. Set Up a Virtual Environment (Recommended)
-Creating an isolated virtual environment ensures clean dependency management:
-
-**On Windows (PowerShell / Command Prompt):**
-```bash
-python -m venv venv
-.\venv\Scripts\activate
-```
-
-**On Linux / macOS:**
-```bash
+# Create and activate a virtual environment
 python3 -m venv venv
 source venv/bin/activate
-```
 
-### 3. Install PULSE CLI
-Install the application in editable/production mode using `pip`:
-
-```bash
+# Install in editable mode
 pip install -e .
+
+# Launch PULSE
+pulse
 ```
 
-### 4. Run the Tool
-Launch PULSE from anywhere in your terminal:
+### Kali Linux (Externally Managed Environment)
 
 ```bash
+cd PULSE
+python3 -m venv venv
+source venv/bin/activate
+pip install -e .
+pulse
+```
+
+*Or install globally via `pipx`:*
+```bash
+pipx install .
+pulse
+```
+
+### Windows (PowerShell)
+
+```powershell
+# Clone the repository
+git clone https://github.com/Unise0015/PULSE.git
+cd PULSE
+
+# Create and activate virtual environment
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+
+# Install in editable mode
+pip install -e .
+
+# Launch PULSE
 pulse
 ```
 
 ---
 
-## Subcommands & CLI Usage
+## Usage Guide
 
-### Subcommands
-- `pulse config` — Manage settings (`pulse config list`, `pulse config get <KEY>`, `pulse config set <KEY> <VAL>`)
-- `pulse doctor` — System health diagnostics (`pulse doctor`, `pulse doctor --json`)
-- `pulse docs` — Generate CLI configuration documentation (`pulse docs config`)
+### 1. Interactive Menu Mode
+Simply run `pulse` to launch the interactive terminal interface:
 
-### Command Flags
 ```bash
-pulse --offline             # Force local cache scanning without network calls
-pulse --verbose             # Display detailed score calculation breakdowns
-pulse --compact             # Render compact executive summary
-pulse --attack-paths        # Enable deep attack path exposure analysis
-pulse --debug               # Enable diagnostic logging
+pulse
+```
+
+```
+? What would you like to do?
+ 1) Scan a Package Across Any Supported Ecosystem
+ 2) Auto-discover & scan all packages
+ 3) Scan from file (requirements.txt / package.json)
+ 4) Lookup a CVE ID directly
+ 5) Website Technology Assessment
+ 6) Export last scan report
+ 7) View scan history
+ 8) Settings
+ h) Help
+ 0) Exit
+```
+
+### 2. Command-Line Options & Flags
+
+```bash
+pulse --offline       # Execute using cached databases only (no external network calls)
+pulse --verbose       # Show detailed candidate resolution scores and stage breakdowns
+pulse --compact       # Output concise executive summary table only
+pulse --attack-paths  # Automatically render MITRE ATT&CK exposure chains
+pulse --debug         # Enable verbose debug logging and diagnostic stack traces
+pulse --no-banner     # Suppress ASCII art startup banner
+```
+
+### 3. Subcommands
+
+#### Configuration Management (`pulse config`)
+```bash
+pulse config list                    # List all settings with current and default values
+pulse config get NVD_API_KEY         # Query a specific setting
+pulse config set NVD_API_KEY <key>   # Set a persistent configuration value
+pulse config edit                    # Launch interactive settings editor
+pulse config diff                    # Show all non-default customized settings
+pulse config validate                # Validate syntax of active .env configuration
+pulse config reset                   # Reset configuration to default settings
+```
+
+#### System Health Diagnostics (`pulse doctor`)
+```bash
+pulse doctor                         # Run interactive health checks with diagnostic scores
+pulse doctor --json                  # Export health report as JSON
+pulse doctor --markdown              # Export health report as Markdown
+pulse doctor --export report.md      # Save diagnostic report to file
+```
+
+#### Documentation Generator (`pulse docs`)
+```bash
+pulse docs config                    # Generate comprehensive Markdown configuration reference
 ```
 
 ---
 
-## Threat Intelligence Pipeline
+## Configuration & API Keys
 
-1. **Discovery:** Identifies installed and project manifest dependencies.
-2. **OSV Provider:** Matches packages against Google OSV vulnerability database.
-3. **NVD Provider:** Enriches findings with CVSS base scores, vectors, and severities.
-4. **EPSS Layer:** Incorporates FIRST EPSS probability scores (0.0 to 1.0).
-5. **CISA KEV Layer:** Checks for active exploitation status in CISA Known Exploited Vulnerabilities catalog.
-6. **MITRE ATT&CK & CWE Registry:** Maps findings to technique IDs, titles, tactics, and CWE definitions.
-7. **Risk Heat Score Calculation:**
-   $$\text{Risk Heat Score} = (\text{CVSS} \times 5) + (\text{EPSS} \times 30) + (\text{KEV} \times 20)$$
-8. **ScanPolicy & Verified Remediation:** Filters candidates, rejects vulnerable fix versions, and emits exact pinning upgrade commands.
+### NVD API Key (Recommended)
+An NVD API key increases the NIST NVD rate limit from **5 requests** to **50 requests** per 30-second rolling window:
 
----
+1. Request a free key at [NIST NVD Developer Portal](https://nvd.nist.gov/developers/request-an-api-key).
+2. Configure it in PULSE via any of the following:
+   - **Interactive Menu:** `Settings` -> `API Keys & Credentials` -> `Add/Update NVD API Key`
+   - **CLI Command:** `pulse config set NVD_API_KEY your_key_here`
+   - **Environment Variable:** Set `NVD_API_KEY=your_key_here` in `.env`
 
-## Configuration & NVD API Key
-
-Configure options via interactive menu (`Settings`) or `pulse config`:
-
-```bash
-pulse config set NVD_API_KEY your_api_key_here
-pulse config set REPORT_DEFAULT_LOCATION documents
-```
-
-By default, exported reports are saved to:
-- **Windows:** `%USERPROFILE%\Documents\PULSE Reports\`
-- **Linux/macOS:** `~/Documents/PULSE Reports/`
+### Platform Configuration File Paths
+- **Linux:** `~/.config/pulse/.env`
+- **Windows:** `%APPDATA%\pulse\.env`
 
 ---
 
-## Testing
+## Threat Intelligence & Scoring Architecture
 
-Run full automated test suite:
-```bash
-pytest -v
-```
+| Intelligence Source | Provider / Authority | Data Provided & Security Impact |
+| :--- | :--- | :--- |
+| **OSV** | Google Open Source Vulnerabilities | Real-time advisory records, Git commit ranges, ecosystem package names |
+| **NVD** | NIST National Vulnerability Database | CVSS v3.1 Base Score, Severity, CWE weakness taxonomy, CPE 2.3 criteria |
+| **EPSS** | FIRST.org Exploit Prediction Scoring | Empirical 30-day active weaponization probability percentile |
+| **CISA KEV** | Cybersecurity and Infrastructure Security Agency | Catalog of known exploited vulnerabilities actively weaponized in the wild |
+| **MITRE ATT&CK** | MITRE Corporation | Enterprise attack tactics, techniques, and adversary behavior chains |
+| **Exploit Intelligence** | Community PoC Trackers | Classification of public PoCs (*Active*, *Weaponized*, *Functional*, *PoC*) |
+
+### Risk Heat Score Formula (0–100)
+
+$$\\text{Risk Heat Score} = (\\text{CVSS Base} \\times 5.0) + (\\text{EPSS Probability} \\times 30.0) + (\\text{KEV Active Multiplier} \\times 20.0) + \\text{PoC Adjustment}$$
+
+- **Critical Risk:** >= 80.0 (Immediate remediation required; active exploit or high EPSS)
+- **High Risk:** 60.0 - 79.9 (Severe impact or weaponized vulnerability)
+- **Medium Risk:** 30.0 - 59.9 (Moderate severity without active exploitation)
+- **Low Risk:** < 30.0 (Low severity, informational)
+
+---
+
+## Export & Report Formats
+
+- **Interactive HTML:** Self-contained single-page application with dark theme, responsive Chart.js visual graphs, risk score cards, and upgrade commands.
+- **SARIF 2.1.0:** Static Analysis Results Interchange Format for automated GitHub Code Scanning alerts.
+- **CycloneDX 1.4 SBOM:** Standardized Software Bill of Materials capturing package components, versions, licenses, and PURLs.
+- **Structured JSON (Schema 2.0):** Complete machine-readable data payload for custom automation and SIEM ingestion.
+- **Markdown & CSV:** Human-readable tables for pull requests, issue tracking, and spreadsheets.
 
 ---
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+This project is licensed under the terms of the **GNU General Public License v3.0 (GPLv3)**. See the [LICENSE](LICENSE) file for details.
