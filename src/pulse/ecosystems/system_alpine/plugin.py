@@ -3,12 +3,17 @@ Alpine Linux System Package Ecosystem Provider for PULSE.
 Parses /lib/apk/db/installed and APK manifest files.
 """
 
+import sys
+from pathlib import Path
 from typing import List, Optional, Any
 import httpx
 from pulse.ecosystems.base import (
     EcosystemPlugin, PluginManifest, PluginCategory, Capability,
     ScanContext, RawDependency, ResolvedDependency, PackageInfo, ProviderMetadata
 )
+
+# Absolute host path for apk installed DB
+_HOST_APK_PATH = Path("/lib/apk/db/installed")
 
 
 class SystemAlpinePlugin(EcosystemPlugin):
@@ -37,34 +42,73 @@ class SystemAlpinePlugin(EcosystemPlugin):
 
     def detect(self, context: ScanContext) -> bool:
         root = self._get_root(context)
-        return (root / "lib/apk/db/installed").exists() or (root / "apk_installed").exists()
+
+        # Local-relative detection (always allowed)
+        if (root / "lib/apk/db/installed").exists() or (root / "apk_installed").exists():
+            return True
+
+        # Host-absolute detection: ONLY if --include-host was explicitly set
+        from pulse.state import AppState
+        if AppState.INCLUDE_HOST and _HOST_APK_PATH.exists():
+            return True
+
+        # Context-aware warning: target resolves to "/" but flag was not set
+        if not AppState.INCLUDE_HOST and _HOST_APK_PATH.exists():
+            try:
+                if root.resolve() == Path("/").resolve():
+                    print(
+                        "pulse: hint: Target is '/'. Use --include-host to scan host OS packages.",
+                        file=sys.stderr
+                    )
+            except Exception:
+                pass
+
+        return False
+
+    def _resolve_apk_file(self, root: Path) -> Optional[Path]:
+        """Resolve which apk installed file to parse, respecting the host opt-in."""
+        if (root / "lib/apk/db/installed").exists():
+            return root / "lib/apk/db/installed"
+        if (root / "apk_installed").exists():
+            return root / "apk_installed"
+
+        from pulse.state import AppState
+        if AppState.INCLUDE_HOST and _HOST_APK_PATH.exists():
+            return _HOST_APK_PATH
+
+        return None
 
     def parse(self, context: ScanContext) -> List[RawDependency]:
         root = self._get_root(context)
         deps = []
-        apk_file = root / "lib/apk/db/installed" if (root / "lib/apk/db/installed").exists() else (root / "apk_installed")
+        apk_file = self._resolve_apk_file(root)
 
-        if apk_file.exists():
-            try:
-                content = apk_file.read_text(encoding="utf-8")
-                pkg_name = None
-                pkg_ver = None
-                for line in content.splitlines():
-                    if line.startswith("P:"):
-                        pkg_name = line[2:].strip()
-                    elif line.startswith("V:"):
-                        pkg_ver = line[2:].strip()
-                    elif not line.strip() and pkg_name and pkg_ver:
-                        deps.append(RawDependency(
-                            name=pkg_name,
-                            version_spec=pkg_ver,
-                            ecosystem="Alpine",
-                            source_file=apk_file.name
-                        ))
-                        pkg_name = None
-                        pkg_ver = None
-            except Exception:
-                pass
+        if apk_file is None:
+            return deps
+
+        is_host_origin = (apk_file == _HOST_APK_PATH)
+
+        try:
+            content = apk_file.read_text(encoding="utf-8")
+            pkg_name = None
+            pkg_ver = None
+            for line in content.splitlines():
+                if line.startswith("P:"):
+                    pkg_name = line[2:].strip()
+                elif line.startswith("V:"):
+                    pkg_ver = line[2:].strip()
+                elif not line.strip() and pkg_name and pkg_ver:
+                    deps.append(RawDependency(
+                        name=pkg_name,
+                        version_spec=pkg_ver,
+                        ecosystem="Alpine",
+                        source_file=apk_file.name,
+                        metadata={"origin": "host"} if is_host_origin else {}
+                    ))
+                    pkg_name = None
+                    pkg_ver = None
+        except Exception:
+            pass
 
         return deps
 

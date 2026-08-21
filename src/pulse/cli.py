@@ -1380,6 +1380,7 @@ Examples:
     parser.add_argument("--compact", action="store_true", help="Show compact executive summary only")
     parser.add_argument("--attack-paths", action="store_true", help="Enable attack path and exposure analysis")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging and diagnostic stack traces")
+    parser.add_argument("--include-host", action="store_true", help="Include host OS system packages (dpkg/apk) in scan results")
 
     subparsers = parser.add_subparsers(dest="command", help="Subcommands")
 
@@ -1423,6 +1424,7 @@ Examples:
     AppState.VERBOSE_MODE = args.verbose
     AppState.DEBUG_MODE = args.debug
     AppState.SHOW_ATTACK_PATHS = args.attack_paths
+    AppState.INCLUDE_HOST = args.include_host
     
     if args.compact:
         AppState.SUMMARY_MODE = SummaryMode.COMPACT

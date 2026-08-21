@@ -3,12 +3,17 @@ Debian / Ubuntu System Package Ecosystem Provider for PULSE.
 Parses dpkg status files and system package manifests.
 """
 
+import sys
+from pathlib import Path
 from typing import List, Optional, Any
 import httpx
 from pulse.ecosystems.base import (
     EcosystemPlugin, PluginManifest, PluginCategory, Capability,
     ScanContext, RawDependency, ResolvedDependency, PackageInfo, ProviderMetadata
 )
+
+# Absolute host path for dpkg status
+_HOST_DPKG_PATH = Path("/var/lib/dpkg/status")
 
 
 class SystemDebianPlugin(EcosystemPlugin):
@@ -37,34 +42,73 @@ class SystemDebianPlugin(EcosystemPlugin):
 
     def detect(self, context: ScanContext) -> bool:
         root = self._get_root(context)
-        return (root / "var/lib/dpkg/status").exists() or (root / "dpkg.status").exists()
+
+        # Local-relative detection (always allowed)
+        if (root / "var/lib/dpkg/status").exists() or (root / "dpkg.status").exists():
+            return True
+
+        # Host-absolute detection: ONLY if --include-host was explicitly set
+        from pulse.state import AppState
+        if AppState.INCLUDE_HOST and _HOST_DPKG_PATH.exists():
+            return True
+
+        # Context-aware warning: target resolves to "/" but flag was not set
+        if not AppState.INCLUDE_HOST and _HOST_DPKG_PATH.exists():
+            try:
+                if root.resolve() == Path("/").resolve():
+                    print(
+                        "pulse: hint: Target is '/'. Use --include-host to scan host OS packages.",
+                        file=sys.stderr
+                    )
+            except Exception:
+                pass
+
+        return False
+
+    def _resolve_dpkg_file(self, root: Path) -> Optional[Path]:
+        """Resolve which dpkg status file to parse, respecting the host opt-in."""
+        if (root / "var/lib/dpkg/status").exists():
+            return root / "var/lib/dpkg/status"
+        if (root / "dpkg.status").exists():
+            return root / "dpkg.status"
+
+        from pulse.state import AppState
+        if AppState.INCLUDE_HOST and _HOST_DPKG_PATH.exists():
+            return _HOST_DPKG_PATH
+
+        return None
 
     def parse(self, context: ScanContext) -> List[RawDependency]:
         root = self._get_root(context)
         deps = []
-        dpkg_file = root / "var/lib/dpkg/status" if (root / "var/lib/dpkg/status").exists() else (root / "dpkg.status")
+        dpkg_file = self._resolve_dpkg_file(root)
 
-        if dpkg_file.exists():
-            try:
-                content = dpkg_file.read_text(encoding="utf-8")
-                pkg_name = None
-                pkg_ver = None
-                for line in content.splitlines():
-                    if line.startswith("Package: "):
-                        pkg_name = line.split("Package: ", 1)[1].strip()
-                    elif line.startswith("Version: "):
-                        pkg_ver = line.split("Version: ", 1)[1].strip()
-                    elif not line.strip() and pkg_name and pkg_ver:
-                        deps.append(RawDependency(
-                            name=pkg_name,
-                            version_spec=pkg_ver,
-                            ecosystem="Debian",
-                            source_file=dpkg_file.name
-                        ))
-                        pkg_name = None
-                        pkg_ver = None
-            except Exception:
-                pass
+        if dpkg_file is None:
+            return deps
+
+        is_host_origin = (dpkg_file == _HOST_DPKG_PATH)
+
+        try:
+            content = dpkg_file.read_text(encoding="utf-8")
+            pkg_name = None
+            pkg_ver = None
+            for line in content.splitlines():
+                if line.startswith("Package: "):
+                    pkg_name = line.split("Package: ", 1)[1].strip()
+                elif line.startswith("Version: "):
+                    pkg_ver = line.split("Version: ", 1)[1].strip()
+                elif not line.strip() and pkg_name and pkg_ver:
+                    deps.append(RawDependency(
+                        name=pkg_name,
+                        version_spec=pkg_ver,
+                        ecosystem="Debian",
+                        source_file=dpkg_file.name,
+                        metadata={"origin": "host"} if is_host_origin else {}
+                    ))
+                    pkg_name = None
+                    pkg_ver = None
+        except Exception:
+            pass
 
         return deps
 
