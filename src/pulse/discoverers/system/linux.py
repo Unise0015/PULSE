@@ -202,7 +202,7 @@ class LinuxHostDiscoverer(BaseHostDiscoverer):
         try:
             result = subprocess.run(
                 ["dpkg-query", "-W",
-                 "-f=${Package}\t${Version}\t${Architecture}\t${db:Status-Abbrev}\n"],
+                 r"-f=${Package}\t${Version}\t${Architecture}\t${db:Status-Abbrev}\n"],
                 capture_output=True, text=True, timeout=10.0
             )
             if result.returncode != 0:
@@ -387,7 +387,7 @@ class LinuxHostDiscoverer(BaseHostDiscoverer):
         packages = []
         try:
             result = subprocess.run(
-                ["rpm", "-qa", "--qf", "%{NAME}\t%{VERSION}-%{RELEASE}\t%{ARCH}\n"],
+                ["rpm", "-qa", r"--qf", r"%{NAME}\t%{VERSION}-%{RELEASE}\t%{ARCH}\n"],
                 capture_output=True, text=True, timeout=10.0
             )
             if result.returncode == 0 and result.stdout:
