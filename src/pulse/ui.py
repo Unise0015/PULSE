@@ -1364,3 +1364,75 @@ def render_cve_details(console, finding: VulnerabilityFinding) -> None:
         box=box.ROUNDED,
         expand=False
     ))
+
+
+def render_all_packages_paginated(console, scan, page_size: int = 50, input_func=None):
+    import questionary
+    
+    # Flatten packages from dependency trees
+    packages = []
+    if getattr(scan, "dependency_trees", None):
+        def extract_pkgs(node):
+            packages.append((node.package_name, node.version, node.ecosystem))
+            for child in node.children:
+                extract_pkgs(child)
+        for root_node in scan.dependency_trees:
+            extract_pkgs(root_node)
+            
+    # Deduplicate and sort
+    packages = sorted(list(set(packages)), key=lambda x: (x[2] or "", x[0] or "", x[1] or ""))
+    
+    if not packages:
+        console.print(Panel(
+            "[yellow]No packages were found during this scan.[/yellow]",
+            title="[bold cyan]Scanned Packages[/bold cyan]",
+            box=box.SQUARE,
+            expand=False
+        ))
+        if input_func:
+            input_func("[Q] Back")
+        return
+
+    total_count = len(packages)
+    page = 0
+
+    while True:
+        start_idx = page * page_size
+        end_idx = min(start_idx + page_size, total_count)
+        page_packages = packages[start_idx:end_idx]
+
+        has_prev = page > 0
+        has_next = end_idx < total_count
+
+        title = f"Scanned Packages & Versions (Showing {start_idx + 1}–{end_idx} of {total_count})"
+
+        table = Table(
+            title=f"[bold cyan]{title}[/bold cyan]",
+            border_style="cyan",
+            show_lines=True,
+            box=box.SQUARE,
+        )
+        table.add_column("Package Name", style="bold white")
+        table.add_column("Version", style="bold green")
+        table.add_column("Ecosystem", style="cyan")
+
+        for pkg in page_packages:
+            table.add_row(pkg[0], pkg[1] or "Unknown", pkg[2] or "Unknown")
+
+        console.print(table)
+
+        nav_choices = []
+        if has_prev:
+            nav_choices.append(questionary.Choice("Previous Page", "prev", shortcut_key="p"))
+        if has_next:
+            nav_choices.append(questionary.Choice("Next Page", "next", shortcut_key="n"))
+        nav_choices.append(questionary.Choice("Back to Menu", "back", shortcut_key="b"))
+
+        choice = (input_func or questionary.select("Navigation:", choices=nav_choices).ask)() if input_func else questionary.select("Navigation:", choices=nav_choices).ask()
+        
+        if choice == "prev" and has_prev:
+            page -= 1
+        elif choice == "next" and has_next:
+            page += 1
+        else:
+            break

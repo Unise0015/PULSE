@@ -404,7 +404,7 @@ def post_scan_menu(scan: ScanResult):
             ])
             
         choices.extend([
-            "Dependencies",
+            "View Scanned Packages",
             questionary.Separator("────────────────────────────"),
             "Export Report",
             "Back to Main Menu"
@@ -426,8 +426,9 @@ def post_scan_menu(scan: ScanResult):
             print_top_attack_paths(console, scan)
         elif choice == "Threat Intelligence":
             print_exploit_intelligence_view(console, scan)
-        elif choice == "Dependencies":
-            print_dependency_tree_view(console, scan)
+        elif choice == "View Scanned Packages":
+            from pulse.ui import render_all_packages_paginated
+            render_all_packages_paginated(console, scan)
         elif choice == "Export Report":
             export_workflow(scan)
 
