@@ -34,6 +34,58 @@ class ParserRegistry:
 
 # Individual File Parsers that parse physical Path directly
 
+
+def parse_pyproject_toml(path: Path) -> List[PackageInfo]:
+    """Parse pyproject.toml file for dependencies."""
+    packages = []
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read()
+
+        import re
+        
+        # Look for standard PEP 621 dependencies
+        in_deps = False
+        for line in content.splitlines():
+            line = line.strip()
+            if line.startswith("["):
+                # We enter dependencies block
+                if line == "[project.dependencies]" or line == "[tool.poetry.dependencies]":
+                    in_deps = True
+                else:
+                    in_deps = False
+                continue
+                
+            if in_deps and line:
+                if line.startswith("#"): continue
+                
+                # PEP 621 usually uses array of strings: "requests>=2.0"
+                # Poetry uses key-value: requests = "^2.0"
+                # Let's handle both
+                
+                # Poetry style
+                if "=" in line:
+                    parts = line.split("=", 1)
+                    name = parts[0].strip().strip('"').strip("'")
+                    version = parts[1].strip().strip(',').strip('"').strip("'").lstrip('^~>=<')
+                    if name:
+                        packages.append(PackageInfo(name=name, version=version, ecosystem="pypi", source_file=path.name))
+                # PEP 621 style
+                elif line.startswith('"') or line.startswith("'"):
+                    val = line.strip(',').strip('"').strip("'")
+                    match = re.match(r"^([a-zA-Z0-9_\-\.\[\]]+)(?:==|>=|<=|~=|!=|<|>|===|@)?\s*([a-zA-Z0-9_\-\.\*]+)?", val)
+                    if match:
+                        name = match.group(1).strip()
+                        if "[" in name:
+                            name = name.split("[")[0]
+                        version = match.group(2).strip() if match.group(2) else "unknown"
+                        packages.append(PackageInfo(name=name, version=version, ecosystem="pypi", source_file=path.name))
+                        
+    except Exception as e:
+        raise ValueError(f"Failed to parse pyproject.toml '{path.name}': {e}")
+
+    return packages
+
 def parse_python_requirements_file(path: Path) -> List[PackageInfo]:
     """Parse Python requirements file from path."""
     packages = []
@@ -236,6 +288,7 @@ def parse_maven_file(path: Path) -> List[PackageInfo]:
 
 # Register default parsers
 ParserRegistry.register(DependencyFileType.PYTHON_REQUIREMENTS, parse_python_requirements_file)
+ParserRegistry.register(DependencyFileType.PYPROJECT_TOML, parse_pyproject_toml)
 ParserRegistry.register(DependencyFileType.PACKAGE_JSON, parse_package_json_file)
 ParserRegistry.register(DependencyFileType.NPM_LOCK, parse_npm_lock_file)
 ParserRegistry.register(DependencyFileType.YARN_LOCK, parse_npm_lock_file)

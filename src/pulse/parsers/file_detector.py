@@ -13,6 +13,7 @@ from typing import Optional
 
 class DependencyFileType(Enum):
     PYTHON_REQUIREMENTS = "python_requirements"
+    PYPROJECT_TOML = "pyproject_toml"
     PACKAGE_JSON = "package_json"
     NPM_LOCK = "npm_lock"
     YARN_LOCK = "yarn_lock"
@@ -37,7 +38,7 @@ class DependencyFileDetector:
         "requirements.lock": DependencyFileType.PYTHON_REQUIREMENTS,
         "requirements.in": DependencyFileType.PYTHON_REQUIREMENTS,
         "pipfile": DependencyFileType.PYTHON_REQUIREMENTS,
-        "pyproject.toml": DependencyFileType.PYTHON_REQUIREMENTS,
+        "pyproject.toml": DependencyFileType.PYPROJECT_TOML,
         "package.json": DependencyFileType.PACKAGE_JSON,
         "package-lock.json": DependencyFileType.NPM_LOCK,
         "yarn.lock": DependencyFileType.YARN_LOCK,
