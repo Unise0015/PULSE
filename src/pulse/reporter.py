@@ -281,12 +281,3 @@ def export_html(scan: ScanResult, output_path: Path, delta=None, advisor=None):
     with open(valid_path, "w", encoding="utf-8") as f:
         f.write(content)
 
-def (scan: ScanResult, output_path: Path):
-    """Export ScanResult to SARIF 2.1.0 JSON format."""
-    valid_path = validate_export_path(output_path)
-    ctx = ReportContext(scan_result=scan, scan_id="export")
-    model = ReportBuilder.build(ctx)
-    renderer = SARIFRenderer()
-    content = renderer.render(model)
-    with open(valid_path, "w", encoding="utf-8") as f:
-        f.write(content)
