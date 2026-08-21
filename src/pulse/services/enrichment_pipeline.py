@@ -73,10 +73,15 @@ class OSVEnricher(BaseEnricher):
             context.phase = ScanPhase.CORRELATION
             
         if progress:
-            task = progress.add_task("[yellow]Matching vulnerabilities (OSV / NVD)...[/yellow]", total=None)
-        
+            osv_task = progress.add_task("[yellow]Querying OSV Database[/yellow]", total=len(data.packages))
+        else:
+            osv_task = None
+            
         osv_provider = OSVProvider()
-        findings = osv_provider.lookup_packages(data.packages)
+        findings = osv_provider.lookup_packages(data.packages, progress=progress, task_id=osv_task)
+        
+        if progress and osv_task is not None:
+            progress.remove_task(osv_task)
         for f in findings:
             raw = f.description or ""
             f.summary = raw[:250] + "..." if len(raw) > 250 else raw
@@ -98,9 +103,16 @@ class OSVEnricher(BaseEnricher):
                 cpe_resolver = TieredCPEResolver()
                 cpe_results = []
                 pkg_map = {}
+                
+                cpe_task = None
+                if progress:
+                    cpe_task = progress.add_task("[cyan]NVD CPE Resolution[/cyan]", total=len(unmatched_packages))
+                    
                 for pkg in unmatched_packages:
                     norm = pkg.name.lower()
                     resolution = cpe_resolver.resolve(pkg.name, pkg.ecosystem)
+                    if progress and cpe_task is not None:
+                        progress.advance(cpe_task)
                     
                     if resolution:
                         ver_str = pkg.version or "*"
@@ -125,6 +137,9 @@ class OSVEnricher(BaseEnricher):
                         )
                         cpe_results.append(cpe_res)
                         pkg_map[norm] = pkg
+                        
+                if progress and cpe_task is not None:
+                    progress.remove_task(cpe_task)
                         
                 if cpe_results:
                     engine = NVDCorrelationEngine()
@@ -348,24 +363,14 @@ class EnrichmentPipeline:
             metrics=EnrichmentMetrics()
         )
         
-        main_task = None
-        if progress:
-            main_task = progress.add_task("[bold blue]Vulnerability Intelligence Pipeline[/bold blue]", total=len(self.stages))
-        
         for stage_cls in self.stages:
-            if progress and main_task is not None:
-                progress.update(main_task, description=f"[bold blue]Running {stage_cls.__name__}...[/bold blue]")
             try:
                 stage = stage_cls()
-                # Suppress the nested tasks within stages since we have a main pipeline progress now
-                stage.enrich(result, None, context)
+                stage.enrich(result, progress, context)
             except Exception as e:
                 msg = f"Enrichment stage {stage_cls.__name__} failed: {e}"
                 logger.error(msg, exc_info=True)
                 result.warnings.append(msg)
-            
-            if progress and main_task is not None:
-                progress.advance(main_task)
                 
         from pulse.domain.models import deduplicate_and_merge_findings
         result.findings = deduplicate_and_merge_findings(result.findings)
