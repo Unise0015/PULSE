@@ -105,11 +105,19 @@ def post_scan_render(console, scan: ScanResult):
 
 
 def auto_discover():
-    orchestrator = ScannerOrchestrator()
-    scan_result = orchestrator.run_auto_discover_scan(console)
-    AppState.LAST_SCAN = scan_result
-    post_scan_render(console, scan_result)
-    post_scan_menu(scan_result)
+    from pulse.state import AppState
+    # The user explicitly selected "System Discovery" from the interactive menu.
+    # This IS their opt-in — temporarily enable host scanning for this scan.
+    prev_include_host = AppState.INCLUDE_HOST
+    AppState.INCLUDE_HOST = True
+    try:
+        orchestrator = ScannerOrchestrator()
+        scan_result = orchestrator.run_auto_discover_scan(console)
+        AppState.LAST_SCAN = scan_result
+        post_scan_render(console, scan_result)
+        post_scan_menu(scan_result)
+    finally:
+        AppState.INCLUDE_HOST = prev_include_host
 
 def scan_single_package_menu():
     from pulse.ecosystems.package_resolution import PackageResolutionService
