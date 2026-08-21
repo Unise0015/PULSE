@@ -1153,8 +1153,8 @@ def interactive_menu():
         questionary.Choice("CVE Lookup", "cve_lookup", shortcut_key="5"),
         questionary.Choice("Results", "results", shortcut_key="6"),
         questionary.Choice("Settings", "settings", shortcut_key="7"),
-        questionary.Choice("Help & Docs", "help", shortcut_key="h"),
-        questionary.Choice("Exit PULSE", "exit", shortcut_key="0"),
+        questionary.Choice("Help", "help", shortcut_key="h"),
+        questionary.Choice("Exit", "exit", shortcut_key="0"),
     ]
 
     action_map = {
