@@ -106,11 +106,16 @@ def post_scan_render(console, scan: ScanResult):
 
 def auto_discover():
     from pulse.state import AppState
+    from pulse.discoverers.system.linux import LinuxHostDiscoverer
     # The user explicitly selected "System Discovery" from the interactive menu.
     # This IS their opt-in — temporarily enable host scanning for this scan.
     prev_include_host = AppState.INCLUDE_HOST
     AppState.INCLUDE_HOST = True
     try:
+        discoverer = LinuxHostDiscoverer()
+        if discoverer.is_applicable():
+            meta = discoverer.get_metadata()
+            console.print(f"\n[bold cyan]Host System Audit:[/bold cyan] {meta.os_name} | Kernel {meta.kernel_release} ({meta.architecture})")
         orchestrator = ScannerOrchestrator()
         scan_result = orchestrator.run_auto_discover_scan(console)
         AppState.LAST_SCAN = scan_result
