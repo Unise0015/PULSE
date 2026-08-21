@@ -393,22 +393,26 @@ def website_post_scan_menu(scan: ScanResult):
             export_last_scan_menu()
 
 def post_scan_menu(scan: ScanResult):
-    if not scan.findings:
-        return
-
     while True:
-        choice = questionary.select(
-            "\nPost-Scan Actions:",
-            choices=[
+        choices = []
+        if scan.findings:
+            choices.extend([
                 "Findings",
                 "Remediation",
                 "Attack Paths",
                 "Threat Intelligence",
-                "Dependencies",
-                questionary.Separator("────────────────────────────"),
-                "Export Report",
-                "Back to Main Menu"
-            ]
+            ])
+            
+        choices.extend([
+            "Dependencies",
+            questionary.Separator("────────────────────────────"),
+            "Export Report",
+            "Back to Main Menu"
+        ])
+        
+        choice = questionary.select(
+            "\nPost-Scan Actions:",
+            choices=choices
         ).ask()
 
         if choice in ("Back to Main Menu", "Return to Main Menu") or choice is None:

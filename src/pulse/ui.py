@@ -191,8 +191,11 @@ def print_provider_observability(console, scan: ScanResult):
 
 def print_security_summary(console, scan: ScanResult, compact: bool = False):
     if not scan.findings and scan.vulnerable_packages_count == 0:
+        summary_text = Text()
+        summary_text.append(f"{'Dependencies Scanned:':<28} {scan.packages_scanned}\n", style="bold")
+        summary_text.append(f"[bold green]No vulnerabilities detected[/bold green]")
         console.print(Panel(
-            "[bold green]No vulnerabilities detected[/bold green]",
+            summary_text,
             box=box.SQUARE,
             expand=False,
             title="[bold green]Security Summary[/bold green]"
