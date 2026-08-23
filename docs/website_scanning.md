@@ -1,42 +1,40 @@
-# Website Technology Fingerprinting & Vulnerability Correlation
+# Website Scanning Engine Specifications
 
-PULSE includes a high-performance **Declarative Web Technology Intelligence Engine** capable of detecting over **3,000+ web frameworks, CMS platforms, web servers, JavaScript libraries, CDNs, and security controls**.
-
----
-
-## 1. Multi-Signal Detection Engine
-
-PULSE evaluates target websites using multiple concurrent signal sources:
-
-- **HTTP Response Headers:** Server banners, `X-Powered-By`, `Set-Cookie` tokens, security headers (HSTS, CSP, X-Frame-Options).
-- **DOM & HTML Signatures:** Meta tags, script source URLs, link stylesheets, inline JavaScript variables, and DOM structure.
-- **Script Signatures:** Asset filenames, CDN script URLs, and regex version capture groups.
-- **Favicon Hash Matching:** MurmurHash3 (MMH3) hash calculation of `/favicon.ico` for rapid infrastructure and framework identification.
-- **22 Domain Packs:** Signatures partitioned across Web Servers, CMS, Frontend, Backend, Databases, Cloud, CI/CD, SIEM, Firewalls, etc.
+The Web Technology Intelligence Engine relies on declarative evaluation and AST-style DOM parsing to identify capabilities.
 
 ---
 
-## 2. Canonical Vulnerability Correlation Parity
+## 1. Multi-Vector Fingerprinting (`pulse.website.website_fingerprint.WebsiteFingerprintAnalyzer`)
+The analyzer fires concurrent `httpx.AsyncClient` requests to extract signals.
 
-To prevent inconsistencies between standalone package scans and website technology scans, PULSE maps detected web technologies to canonical **PackageIdentities**:
+- **HTTP Analysis (`_analyze_headers`)**: Reads `response.headers`. Regex runs against `Server` and `X-Powered-By`.
+- **DOM Parsing (`_analyze_dom_and_scripts`)**: Uses `BeautifulSoup4`. 
+  - Searches `<meta name="generator">` for explicit CMS tags (e.g., WordPress).
+  - Searches `<script src="">` to match known CDN URLs for libraries (e.g., React, jQuery).
+- **Favicon Algorithm (`FaviconHasher`)**: 
+  - Fetches `/favicon.ico`.
+  - Base64 encodes the byte stream.
+  - Runs a MurmurHash3 (`mmh3.hash()`) integer conversion.
+  - Performs an O(1) dictionary lookup against `pulse/website/favicon_hashes.json`.
 
-```
-Website Detected Technology (e.g. jQuery 1.7.2)
-                     │
-                     ▼
-       Canonical Identity Resolution (npm:jquery)
-                     │
-                     ▼
-          Shared Enrichment Pipeline
-         (OSV • NVD • EPSS • KEV • ATT&CK)
-                     │
-                     ▼
-        Identical Vulnerability Findings
-```
+---
 
-### Correlation Security States:
-1. **VULNERABLE:** Canonical package correlated; known security advisories found.
-2. **CLEAN:** Canonical package correlated; 0 known vulnerabilities.
-3. **VERSION_REQUIRED:** Technology identified, but version could not be confirmed.
-4. **DETECTION_ONLY:** Non-software infrastructure or non-correlatable signal.
-5. **CORRELATION_UNAVAILABLE:** Intelligence provider unreachable or ecosystem not supported.\n
+## 2. Declarative Signature Matcher (`pulse.website.declarative_engine.DeclarativeEngine`)
+The engine iterates `pulse.website.technology_catalog.TECHNOLOGY_CATALOG`.
+
+### Signature Data Structure
+Each technology entry requires:
+- `implies`: Sub-technologies (e.g., "Laravel" implies "PHP").
+- `regex_rules`: Array of PCRE regex strings mapped to headers/DOM/scripts.
+- `version_group`: The regex capture group `` that extracts the exact version string (e.g., `^React/([0-9\.]+)`).
+
+### Output Object (`TechnologyFingerprint`)
+When matched, a fingerprint is yielded with `confidence_score` (1-100) and `version_extracted` (str | None).
+
+---
+
+## 3. Capability Transition (`pulse.website.capability`)
+A `TechnologyFingerprint` must transition into a vulnerability query entity.
+- **`CORRELATABLE`**: Passes `ecosystem` mapping (e.g., npm) straight to `OSVProvider`.
+- **`DETECTION_ONLY`**: Halts processing (e.g., Cloudflare CDN).
+- **`VERSION_REQUIRED`**: Halts processing if `version_extracted` is None, explicitly avoiding NVD false-positive spam.

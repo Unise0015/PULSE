@@ -1,56 +1,36 @@
-# Threat Intelligence & Enrichment Pipeline
+# Vulnerability Intelligence & Threat Enrichment
 
-PULSE integrates a multi-source threat intelligence pipeline to provide contextual, actionable vulnerability data rather than static CVSS scores alone.
-
----
-
-## 1. Intelligence Sources
-
-| Source | Role | Update Mechanism | Impact on Prioritization |
-| :--- | :--- | :--- | :--- |
-| **OSV Database** | Package-specific vulnerability detection | Live REST API (`api.osv.dev`) + SQLite Cache | Primary matching engine; determines affected version ranges. |
-| **NVD (NIST)** | Authoritative CVSS metrics & CWE classification | NIST NVD 2.0 API + SQLite Cache | Provides CVSS v3.1 Base Score, Severity, and CWE identifiers. |
-| **EPSS (FIRST.org)** | 30-day exploit prediction probability | FIRST EPSS API (`api.first.org`) | Quantifies likelihood of weaponization in the next 30 days. |
-| **CISA KEV** | Active in-the-wild exploitation catalog | CISA JSON Catalog + Local Cache | Confirmed active cyberattacks; applies a high-priority multiplier. |
-| **MITRE ATT&CK** | Adversarial TTP mapping | Internal ATT&CK Enterprise Matrix | Identifies attacker tactics (e.g. Initial Access, Privilege Escalation). |
-| **Exploit Intel** | Public PoC & weaponization tracking | Exploit Intelligence Engine | Classifies exploit maturity (*Active*, *Weaponized*, *Functional*, *PoC*). |
+This document provides the raw technical implementation details for the dual-engine enrichment pipeline inside `pulse.services.enrichment_pipeline.EnrichmentPipeline`.
 
 ---
 
-## 2. The 10-Stage Pipeline Lifecycle
+## 1. The OSV (Open Source Vulnerabilities) Pipeline (`pulse.enrichment.osv_provider.OSVProvider`)
 
-When software dependencies or web technologies are scanned, each candidate moves sequentially through the enrichment pipeline:
+### Query Construction & Batching
+OSV enforces strict REST API rate limits. Instead of individual queries, PULSE utilizes the `https://api.osv.dev/v1/querybatch` endpoint.
+- **Batch Chunking Algorithm:** Packages are chunked into lists of 1000 items (`itertools.batched(packages, 1000)`).
+- **Canonical Ecosystem Mapping:** Internal PULSE ecosystem enums are strictly mapped to OSV strings (e.g., `Ecosystem.PYTHON -> "PyPI"`, `Ecosystem.NODE -> "npm"`).
+- **Asynchronous I/O:** Batches are fired concurrently using `asyncio.gather` with `httpx.AsyncClient`.
 
-```
-[Package/Technology]
-       │
-       ▼
- 1. Version Intelligence ──────► Parse SemVer & normalizes release format
-       │
-       ▼
- 2. OSV Query ─────────────────► Identify matching advisory records (GHSA, PYSEC, RUSTSEC, etc.)
-       │
-       ▼
- 3. NVD Enrichment ────────────► Retrieve CVSS v3.1 Base Score, Vector, & CWE
-       │
-       ▼
- 4. EPSS Scoring ──────────────► Fetch FIRST.org exploit prediction probability percentile
-       │
-       ▼
- 5. CISA KEV Lookup ───────────► Check against Known Exploited Vulnerabilities catalog
-       │
-       ▼
- 6. MITRE ATT&CK ──────────────► Map CWE to adversarial Tactics, Techniques, & Procedures
-       │
-       ▼
- 7. Exploit PoC Analysis ──────► Assess public exploit availability & maturity
-       │
-       ▼
- 8. Risk Heat Calculation ─────► Compute composite Risk Heat Score (0 - 100)
-       │
-       ▼
- 9. Attack Path Synthesis ─────► Build exposure-scored attack chains
-       │
-       ▼
-10. Remediation Advisor ───────► Determine minimum safe target version & breaking change risk
-```\n
+### Version Matching
+The OSV API natively understands semver constraints and resolves `PackageInfo.version` against the vulnerability `affected` block. If `version` is absent, the API returns all vulnerabilities for the package, which PULSE will deduplicate based on highest severity.
+
+---
+
+## 2. The NVD & CPE Pipeline (`pulse.enrichment.nvd.correlator.NVDCorrelationEngine`)
+
+### Candidate Resolution (`pulse.correlation.cpe.resolvers.CPEResolver`)
+System binaries and web infrastructure do not have standard package names. 
+- The resolver attempts to yield multiple `CPECandidate` objects based on vendor permutations (e.g., `nginx` -> `cpe:2.3:a:f5:nginx`, `cpe:2.3:a:nginx:nginx`).
+- Fallback candidates are sorted by a deterministic heuristic confidence score.
+
+### API Caching (`pulse.enrichment.nvd.cache.NVDCorrelationCache`)
+NVD is highly rate-limited (5 requests / 30s without key).
+- An SQLite DB at `~/.pulse/cache/nvd.db` stores raw CVE arrays keyed by the CPE prefix.
+- The cache adheres to a strict 24-hour TTL (`cache_ttl_hours=24`) before attempting a network re-fetch.
+
+### Local Version Evaluation (`NVDVersionMatcher`)
+Unlike OSV, NVD API returns ALL vulnerabilities for a CPE string if the version is not perfectly formatted.
+- The `NVDVersionMatcher` runs locally.
+- It iterates through the CVE's `configurations.nodes.cpeMatch` arrays.
+- It performs semantic comparison using the `packaging.version` library against `versionStartIncluding`, `versionStartExcluding`, `versionEndIncluding`, and `versionEndExcluding`.
