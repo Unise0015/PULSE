@@ -160,7 +160,14 @@ def scan_single_package_menu():
             
         is_latest_lookup = version.lower() in ("latest", "*")
         
-        with console.status("[cyan]Detecting package...[/cyan]", spinner="dots"):
+        from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+        with Progress(
+            SpinnerColumn("dots", style="bold cyan"),
+            TextColumn("[bold cyan]Detecting package...[/bold cyan]"),
+            TimeElapsedColumn(),
+            console=console
+        ) as progress:
+            progress.add_task("detect", total=None)
             result = asyncio.run(resolver.resolve(name, None if is_latest_lookup else version))
             
         if not result.candidates:
