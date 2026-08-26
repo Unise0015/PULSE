@@ -355,45 +355,131 @@ def print_trend_summary(console, delta: Optional[PostureDelta]):
 
 
 def print_highest_risk_finding(console, finding: VulnerabilityFinding, scan: Optional[ScanResult] = None):
-    from pulse.ui_helpers.findings import (
-        get_severity_color,
-        build_finding_context,
-        build_vulnerability_summary,
-        build_attack_path,
-        build_upgrade_analysis
-    )
+    from pulse.state import AppState
+    from pulse.vulnerability.cwe_registry import CWERegistry
 
     pkg = finding.package
     rec = None
-    if scan:
-        rec = scan.get_recommendation(pkg.name, pkg.ecosystem)
+    if scan and getattr(scan, 'upgrade_recommendations', None):
+        target_id = f"{pkg.ecosystem}:{pkg.name.lower()}"
+        rec = scan.upgrade_recommendations.get(target_id)
+        
     if not rec:
-        from pulse.version_intelligence import analyze_upgrade_recommendation
-        rec = analyze_upgrade_recommendation(
-            pkg_name=pkg.name,
-            ecosystem=pkg.ecosystem,
-            current_version=pkg.version,
-            findings=[finding],
-            version_metadata=pkg.version_metadata,
-            verify_candidate=True
+        # Fallback if no recommendation generated
+        from pulse.domain.models import UpgradeRecommendation, MigrationRisk, ConfidenceLevel
+        rec = UpgradeRecommendation(
+            status="Unknown",
+            migration_risk=MigrationRisk.UNKNOWN,
+            confidence=ConfidenceLevel.LOW,
+            suitability_rating=0.0
         )
 
-    finding.normalize_severity()
-    is_info = (finding.cvss_severity == "INFORMATIONAL")
-    sev_display = finding.cvss_severity
-    sev_color = get_severity_color(finding.cvss_severity)
-    
-    panel_title = "[bold blue]Informational Finding[/bold blue]" if is_info else "[bold red]Highest Risk Finding & Upgrade Analysis[/bold red]"
-    border_style = "blue" if is_info else "red"
+    # Convert to new UI structure
+    from pulse.ui_helpers.findings import get_severity_color
+    sev_color, sev_display = get_severity_color(finding)
 
-    table = Table(show_header=False, box=None, padding=(0, 2))
+    table = Table(show_header=False, box=None, padding=(0, 2), expand=True)
     table.add_column("Property", style="bold cyan", justify="right", min_width=24)
     table.add_column("Value")
 
-    build_finding_context(table, pkg, finding, rec, sev_color, sev_display)
-    build_vulnerability_summary(table, finding)
-    build_attack_path(table, finding)
-    build_upgrade_analysis(table, pkg, rec)
+    # --- Complete CVE / Security Context (always shown) ---
+    table.add_row("Package", f"[bold]{pkg.name}[/bold]")
+    table.add_row("Scanned Version", f"{pkg.version} [dim]({rec.status})[/dim]")
+    table.add_row("CVE ID", finding.cve_id)
+    cwe_str = CWERegistry.format_cwe(finding.cwe_id, finding.cwe_name)
+    table.add_row("CWE Classification", f"[yellow]{cwe_str}[/yellow]")
+    table.add_row("Severity", f"[{sev_color}]{sev_display}[/{sev_color}]")
+    table.add_row("CVSS Score", f"[{sev_color}]{finding.cvss_score}[/{sev_color}]")
+    if finding.epss_percent is not None:
+        table.add_row("EPSS Percentile", str(finding.epss_percent))
+        
+    def format_kev(f):
+        if not f.cisa_kev: return "No"
+        badge = "[bold red]YES (CISA KEV)[/bold red]"
+        if f.cisa_kev_ransomware: badge += " [red]🚨 RANSOMWARE[/red]"
+        return badge
+        
+    table.add_row("KEV Match", format_kev(finding))
+    table.add_row("Risk Heat Score", f"[bold magenta]{finding.risk_heat_score}[/bold magenta]")
+
+    # --- Vulnerability Summary ---
+    table.add_row("", "")
+    table.add_row("[bold yellow]Vulnerability Summary[/bold yellow]", "────────────────────────────────────────")
+    vuln_desc = finding.description or finding.summary or "No vulnerability description available."
+    table.add_row("", vuln_desc)
+
+    # --- Attack Path ---
+    table.add_row("", "")
+    table.add_row("[bold yellow]Attack Path[/bold yellow]", "────────────────────────────────────────")
+    if getattr(finding, "attack_techniques", None) and len(finding.attack_techniques) > 0:
+        path_lines = [f"[bold red]{finding.cve_id}[/bold red]"]
+        for tech in finding.attack_techniques:
+            tech_name = getattr(tech, "technique_name", None) or "Technique name unavailable"
+            tactic_str = f" [dim](Tactic: {tech.tactic})[/dim]" if (AppState.DEBUG_MODE and getattr(tech, "tactic", None)) else ""
+            path_lines.append("  ↓")
+            path_lines.append(f"[bold red]{tech.technique_id}[/bold red] — {tech_name}{tactic_str}")
+        table.add_row("", "\n".join(path_lines))
+    else:
+        table.add_row("", f"[bold red]{finding.cve_id}[/bold red]\n  ↓\n[dim]No ATT&CK mapping available[/dim]")
+
+    # --- Upgrade Analysis (actionable information) ---
+    table.add_row("", "")
+    table.add_row("[bold yellow]Upgrade Analysis[/bold yellow]", "────────────────────────────────────────")
+    table.add_row("Current Version", pkg.version)
+    table.add_row("Latest Stable", f"[bold green]{rec.latest_stable or 'Unknown'}[/bold green]")
+
+    verif_badge = " [bold green]✅ Verified Safe[/bold green]" if rec.verified_safe else ""
+    table.add_row("Recommended Version", f"[bold green]{rec.recommended_version or 'N/A'}[/bold green]{verif_badge}")
+
+    risk_val = rec.migration_risk.value if hasattr(rec.migration_risk, "value") else str(rec.migration_risk)
+    risk_color = "bold green" if risk_val == "LOW" else ("bold yellow" if risk_val == "MEDIUM" else "bold red")
+    table.add_row("Migration Risk", f"[{risk_color}]{risk_val}[/{risk_color}]")
+
+    conf_val = rec.confidence.value if hasattr(rec.confidence, "value") else str(rec.confidence)
+    table.add_row("Verification", f"[bold green]{conf_val}[/bold green]")
+
+    status_str = "[bold green]✅ Verified Safe[/bold green]" if rec.verified_safe else "[bold green]✓ Advisory Verified[/bold green]"
+    table.add_row("Status", status_str)
+
+    # --- Debug Mode: candidate evaluation details ---
+    if AppState.DEBUG_MODE:
+        table.add_row("", "")
+        table.add_row("[bold yellow]Candidate Evaluation[/bold yellow]", "────────────────────────────────────────")
+        lowest_candidate = getattr(rec, 'minimum_known_safe', None) or 'None Available'
+        if getattr(rec, 'rejected_candidates', None) and lowest_candidate in rec.rejected_candidates:
+            lowest_display = f"[bold red]{lowest_candidate}[/bold red] [yellow]❌ Rejected[/yellow]"
+        else:
+            lowest_display = f"[bold green]{lowest_candidate}[/bold green]"
+        table.add_row("Lowest Candidate Fix", lowest_display)
+        table.add_row("Reason", f"[dim]{getattr(rec, 'recommendation_reason', '')}[/dim]")
+        if getattr(rec, 'alternative_version', None):
+            table.add_row("Alternative Path", f"[cyan]{rec.alternative_version}[/cyan]")
+            table.add_row("Alternative Reason", f"[dim]{rec.alternative_reason}[/dim]")
+        table.add_row("Suitability Rating", f"[bold yellow]{getattr(rec, 'suitability_rating', 0)}[/bold yellow]")
+        if getattr(rec, 'rejected_candidates', None):
+            table.add_row("Rejected Candidates", f"[yellow]✖ {', '.join(rec.rejected_candidates)} (vulnerabilities detected)[/yellow]")
+
+    # --- Upgrade Command ---
+    table.add_row("", "")
+    cmd_header = "[bold yellow]Suggested Commands[/bold yellow]" if AppState.DEBUG_MODE else "[bold yellow]Upgrade Command[/bold yellow]"
+    table.add_row(cmd_header, "────────────────────────────────────────")
+
+    if AppState.DEBUG_MODE:
+        if getattr(rec, 'commands', None) and isinstance(rec.commands, list):
+            for cmd in rec.commands:
+                is_rec = getattr(cmd, 'recommended', False)
+                star = "[bold green]★[/bold green] " if is_rec else "  "
+                mgr = getattr(getattr(cmd, 'manager', 'pkg'), 'value', str(getattr(cmd, 'manager', 'pkg'))).upper()
+                desc = getattr(cmd, 'description', '')
+                cmd_str = getattr(cmd, 'command', str(cmd))
+                table.add_row(f"{star}{mgr} ({desc})", f"[bold green]{cmd_str}[/bold green]")
+        elif getattr(rec, 'commands', None) and isinstance(rec.commands, dict):
+            for k, v in rec.commands.items():
+                table.add_row(k.capitalize(), f"[bold green]{v}[/bold green]")
+    else:
+        primary_cmd = getattr(rec, 'upgrade_command', None)
+        if primary_cmd:
+            table.add_row("Recommended", f"[bold green]{primary_cmd}[/bold green]")
 
     console.print(Panel(
         table,
