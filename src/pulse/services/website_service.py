@@ -15,7 +15,7 @@ from pulse.services.enrichment_pipeline import (
 )
 import pulse.history as history_mod
 from pulse.security_advisor import SecurityAdvisor
-from pulse.version_intelligence.recommendation_engine import populate_scan_recommendations
+
 from pulse.website.website_fingerprint import WebsiteFingerprintAnalyzer
 from pulse.website.capability import (
     evaluate_correlation_eligibility, evaluate_all_eligibilities,
@@ -162,6 +162,7 @@ class WebsiteService:
             scan.target_fingerprint = hashlib.sha256(sorted_pkg_str.encode("utf-8")).hexdigest()
 
         # Populate upgrade recommendations and advisory
+        from pulse.version_intelligence.recommendation_engine import populate_scan_recommendations
         populate_scan_recommendations(scan)
 
         scan.website_assessment.correlation_status = (

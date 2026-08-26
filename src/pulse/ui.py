@@ -366,17 +366,26 @@ def print_highest_risk_finding(console, finding: VulnerabilityFinding, scan: Opt
         
     if not rec:
         # Fallback if no recommendation generated
-        from pulse.domain.models import UpgradeRecommendation, MigrationRisk, ConfidenceLevel
+        from pulse.version_intelligence.models import UpgradeRecommendation, MigrationRisk, RecommendationConfidence as ConfidenceLevel
         rec = UpgradeRecommendation(
+            package_name=pkg.name,
+            ecosystem=pkg.ecosystem,
+            current_version=pkg.version,
             status="Unknown",
-            migration_risk=MigrationRisk.UNKNOWN,
+            migration_risk=MigrationRisk.HIGH,
             confidence=ConfidenceLevel.LOW,
-            suitability_rating=0.0
+            suitability_rating="Unknown"
         )
 
     # Convert to new UI structure
-    from pulse.ui_helpers.findings import get_severity_color
-    sev_color, sev_display = get_severity_color(finding)
+    sev_map = {
+        "CRITICAL": ("bold red", "CRITICAL"),
+        "HIGH": ("red", "HIGH"),
+        "MEDIUM": ("yellow", "MEDIUM"),
+        "LOW": ("green", "LOW"),
+    }
+    sev_str = getattr(finding, "cvss_severity", "UNKNOWN")
+    sev_color, sev_display = sev_map.get(sev_str.upper() if sev_str else "UNKNOWN", ("white", sev_str or "UNKNOWN"))
 
     table = Table(show_header=False, box=None, padding=(0, 2), expand=True)
     table.add_column("Property", style="bold cyan", justify="right", min_width=24)
@@ -394,9 +403,9 @@ def print_highest_risk_finding(console, finding: VulnerabilityFinding, scan: Opt
         table.add_row("EPSS Percentile", str(finding.epss_percent))
         
     def format_kev(f):
-        if not f.cisa_kev: return "No"
+        if not getattr(f, 'kev_match', False): return "No"
         badge = "[bold red]YES (CISA KEV)[/bold red]"
-        if f.cisa_kev_ransomware: badge += " [red]🚨 RANSOMWARE[/red]"
+        if getattr(f, 'ransomware_campaign', False): badge += " [red]🚨 RANSOMWARE[/red]"
         return badge
         
     table.add_row("KEV Match", format_kev(finding))
@@ -480,6 +489,9 @@ def print_highest_risk_finding(console, finding: VulnerabilityFinding, scan: Opt
         primary_cmd = getattr(rec, 'upgrade_command', None)
         if primary_cmd:
             table.add_row("Recommended", f"[bold green]{primary_cmd}[/bold green]")
+
+    panel_title = f"[bold {sev_color}]Highest Risk Vulnerability: {finding.cve_id}[/bold {sev_color}]"
+    border_style = sev_color
 
     console.print(Panel(
         table,
