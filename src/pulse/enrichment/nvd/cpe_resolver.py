@@ -86,6 +86,11 @@ class TieredCPEResolver:
 
     def resolve(self, package_name: str, ecosystem: str) -> Optional[CPEResolverResult]:
         """Resolve a package to its best CPE match using the 3-tier pipeline."""
+        # Tier 0: Standalone software identity (Nginx, Apache, OpenSSL, etc.)
+        result = self._tier0_standalone(package_name)
+        if result:
+            return result
+
         # Tier 1: Curated crosswalk
         result = self._tier1_curated(package_name, ecosystem)
         if result:
@@ -103,6 +108,27 @@ class TieredCPEResolver:
 
         # Tier 3: Heuristic fallback
         return self._tier3_heuristic(package_name, ecosystem)
+
+    # -- Tier 0: Standalone Software Identity --------------------------------
+
+    def _tier0_standalone(self, package_name: str) -> Optional[CPEResolverResult]:
+        """Check if package is a known standalone software with a canonical CPE mapping."""
+        try:
+            from pulse.ecosystems.package_identity import get_standalone_identity
+            standalone = get_standalone_identity(package_name)
+            if standalone:
+                vendor, product, _ = standalone
+                return CPEResolverResult(
+                    vendor=vendor,
+                    product=product,
+                    cpe_uri=f"cpe:2.3:a:{vendor}:{product}",
+                    confidence=100,
+                    tier="standalone",
+                    source="standalone_software_identities",
+                )
+        except Exception as e:
+            logger.debug("Standalone identity lookup failed: %s", e)
+        return None
 
     # -- Tier 1: Curated Crosswalk -------------------------------------------
 

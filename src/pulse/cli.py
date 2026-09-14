@@ -160,6 +160,27 @@ def scan_single_package_menu():
             
         is_latest_lookup = version.lower() in ("latest", "*")
         
+        # Check if this is standalone software (Nginx, Apache, OpenSSL, etc.)
+        from pulse.ecosystems.package_identity import get_standalone_identity
+        standalone = get_standalone_identity(name)
+        if standalone and not is_latest_lookup:
+            cpe_vendor, cpe_product, display_category = standalone
+            display_name = name.strip()
+            console.print(f"\n[bold green]\u2713 {display_name} identified[/bold green]")
+            console.print(f"[bold green]\u2713 Ecosystem: {display_category} (NVD/CPE)[/bold green]")
+            console.print(f"[bold green]\u2713 Version {version} accepted[/bold green]")
+            
+            from pulse.domain.models import PackageInfo
+            pkg = PackageInfo(name=display_name, version=version, ecosystem=display_category)
+            target_id = f"{display_category}:{display_name.lower()}"
+            
+            orchestrator = ScannerOrchestrator()
+            scan_result = orchestrator.run_targeted_scan(console, [pkg], target_type="package", target_id=target_id)
+            AppState.LAST_SCAN = scan_result
+            post_scan_render(console, scan_result)
+            post_scan_menu(scan_result)
+            return
+
         with console.status("[cyan]Detecting package...[/cyan]", spinner="dots"):
             result = asyncio.run(resolver.resolve(name, None if is_latest_lookup else version))
             

@@ -75,6 +75,83 @@ def get_known_identity(package_name: str) -> Tuple[Optional[str], Optional[str]]
     return KNOWN_PACKAGE_IDENTITIES.get(package_name.lower(), (None, None))
 
 
+# Standalone software that is NOT in any package registry but IS tracked via NVD CPE.
+# Format: "name": ("cpe_vendor", "cpe_product", "display_ecosystem_category")
+STANDALONE_SOFTWARE_IDENTITIES: Dict[str, Tuple[str, str, str]] = {
+    # Web Servers
+    "nginx": ("nginx", "nginx", "Server"),
+    "apache": ("apache", "http_server", "Server"),
+    "httpd": ("apache", "http_server", "Server"),
+    "apache http server": ("apache", "http_server", "Server"),
+    "apache httpd": ("apache", "http_server", "Server"),
+    "lighttpd": ("lighttpd", "lighttpd", "Server"),
+    "caddy": ("caddyserver", "caddy", "Server"),
+    "tomcat": ("apache", "tomcat", "Server"),
+    "apache tomcat": ("apache", "tomcat", "Server"),
+    "iis": ("microsoft", "internet_information_services", "Server"),
+    # Cryptography / TLS
+    "openssl": ("openssl", "openssl", "Cryptography"),
+    "libssl": ("openssl", "openssl", "Cryptography"),
+    "gnutls": ("gnu", "gnutls", "Cryptography"),
+    # Databases
+    "mysql": ("oracle", "mysql", "Database"),
+    "mariadb": ("mariadb", "mariadb", "Database"),
+    "postgresql": ("postgresql", "postgresql", "Database"),
+    "postgres": ("postgresql", "postgresql", "Database"),
+    "redis": ("redis", "redis", "Database"),
+    "mongodb": ("mongodb", "mongodb", "Database"),
+    "sqlite": ("sqlite", "sqlite", "Database"),
+    "elasticsearch": ("elastic", "elasticsearch", "Database"),
+    # SSH / Remote Access
+    "openssh": ("openbsd", "openssh", "Server"),
+    "openssh-server": ("openbsd", "openssh", "Server"),
+    # DNS
+    "bind": ("isc", "bind", "DNS"),
+    "named": ("isc", "bind", "DNS"),
+    "bind9": ("isc", "bind", "DNS"),
+    # Utilities / Libraries
+    "curl": ("haxx", "curl", "Utility"),
+    "libcurl": ("haxx", "libcurl", "Utility"),
+    "wget": ("gnu", "wget", "Utility"),
+    "git": ("git-scm", "git", "Utility"),
+    "sudo": ("sudo_project", "sudo", "Utility"),
+    "bash": ("gnu", "bash", "Utility"),
+    "zlib": ("zlib", "zlib", "Library"),
+    "libxml2": ("xmlsoft", "libxml2", "Library"),
+    "libpng": ("libpng", "libpng", "Library"),
+    # Container / Orchestration
+    "docker": ("docker", "docker", "Container"),
+    "containerd": ("linuxfoundation", "containerd", "Container"),
+    "kubernetes": ("kubernetes", "kubernetes", "Orchestration"),
+    "k8s": ("kubernetes", "kubernetes", "Orchestration"),
+    # Mail
+    "postfix": ("postfix", "postfix", "Mail"),
+    "exim": ("exim", "exim", "Mail"),
+    "dovecot": ("dovecot", "dovecot", "Mail"),
+    # Proxy / Load Balancer
+    "haproxy": ("haproxy", "haproxy", "Proxy"),
+    "squid": ("squid-cache", "squid", "Proxy"),
+    "varnish": ("varnish-software", "varnish_cache", "Proxy"),
+    "envoy": ("envoyproxy", "envoy", "Proxy"),
+    # CMS (standalone installs, not package registry)
+    "wordpress": ("wordpress", "wordpress", "CMS"),
+    "joomla": ("joomla", "joomla", "CMS"),
+    # Runtime / Interpreter
+    "php": ("php", "php", "Runtime"),
+    "perl": ("perl", "perl", "Runtime"),
+    "python": ("python", "python", "Runtime"),
+    "ruby": ("ruby-lang", "ruby", "Runtime"),
+    "node.js": ("nodejs", "node.js", "Runtime"),
+    "nodejs": ("nodejs", "node.js", "Runtime"),
+}
+
+
+def get_standalone_identity(name: str) -> Optional[Tuple[str, str, str]]:
+    """Return (cpe_vendor, cpe_product, display_category) if standalone software, else None."""
+    return STANDALONE_SOFTWARE_IDENTITIES.get(name.lower().strip())
+
+
+
 def resolve_technology_package(
     name: str,
     version: Optional[str] = None,
