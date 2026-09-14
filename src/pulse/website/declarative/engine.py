@@ -238,7 +238,203 @@ class DeclarativeTechnologyEngine:
                     ev, ver = result
                     record_detection(tech_name, rule.confidence, ev, ver)
 
-        # 6. Implication Graph & Exclusion Resolution
+        # ── NEW DETECTION PHASES ─────────────────────────────────────────
+
+        # 6. JavaScript Inline Version Comment Detection
+        # Catches: /*! jQuery v3.6.0 */, /** @license React v18.2.0 */, /* Bootstrap v5.3.0 */
+        if html_body:
+            _JS_VERSION_COMMENTS = [
+                # (regex_pattern, technology_name, confidence)
+                (r'/\*[!*]?\s*jQuery\s+v?([0-9]+\.[0-9]+\.[0-9]+)', "jQuery", 100),
+                (r'/\*[!*]?\s*jQuery\s+Migrate\s+v?([0-9]+\.[0-9]+\.[0-9]+)', "jQuery Migrate", 100),
+                (r'/\*[!*]?\s*Bootstrap\s+v?([0-9]+\.[0-9]+\.[0-9]+)', "Bootstrap", 100),
+                (r'@license\s+React\s+v?([0-9]+\.[0-9]+\.[0-9]+)', "React", 100),
+                (r'/\*[!*]?\s*Lodash\s+v?([0-9]+\.[0-9]+\.[0-9]+)', "Lodash", 100),
+                (r'/\*[!*]?\s*Underscore\.js\s+v?([0-9]+\.[0-9]+\.[0-9]+)', "Underscore.js", 100),
+                (r'/\*[!*]?\s*Handlebars\s+v?([0-9]+\.[0-9]+\.[0-9]+)', "Handlebars", 100),
+                (r'/\*[!*]?\s*Backbone\.js\s+v?([0-9]+\.[0-9]+\.[0-9]+)', "Backbone.js", 100),
+                (r'/\*[!*]?\s*Moment\.js\s+v?([0-9]+\.[0-9]+\.[0-9]+)', "Moment.js", 100),
+                (r'/\*[!*]?\s*D3\.js\s+v?([0-9]+\.[0-9]+\.[0-9]+)', "D3.js", 100),
+                (r'/\*[!*]?\s*Chart\.js\s+v?([0-9]+\.[0-9]+\.[0-9]+)', "Chart.js", 100),
+                (r'/\*[!*]?\s*Vue\.js\s+v?([0-9]+\.[0-9]+\.[0-9]+)', "Vue.js", 95),
+                (r'/\*[!*]?\s*Axios\s+v?([0-9]+\.[0-9]+\.[0-9]+)', "Axios", 90),
+                (r'/\*[!*]?\s*Swiper\s+v?([0-9]+\.[0-9]+\.[0-9]+)', "Swiper", 90),
+                (r'/\*[!*]?\s*Popper\s+v?([0-9]+\.[0-9]+\.[0-9]+)', "Popper.js", 90),
+                (r'/\*[!*]?\s*Select2\s+v?([0-9]+\.[0-9]+\.[0-9]+)', "Select2", 90),
+                (r'/\*[!*]?\s*Slick\s+v?([0-9]+\.[0-9]+\.[0-9]+)', "Slick", 90),
+                (r'/\*[!*]?\s*Owl\s+Carousel\s+v?([0-9]+\.[0-9]+\.[0-9]+)', "Owl Carousel", 90),
+                (r'/\*[!*]?\s*Lightbox\s+v?([0-9]+\.[0-9]+\.[0-9]+)', "Lightbox", 90),
+                (r'/\*[!*]?\s*Animate\.css\s+v?([0-9]+\.[0-9]+\.[0-9]+)', "Animate.css", 90),
+                (r'/\*[!*]?\s*normalize\.css\s+v?([0-9]+\.[0-9]+\.[0-9]+)', "Normalize.css", 85),
+                (r'/\*[!*]?\s*Modernizr\s+v?([0-9]+\.[0-9]+\.[0-9]+)', "Modernizr", 90),
+                (r'/\*[!*]?\s*Socket\.IO\s+v?([0-9]+\.[0-9]+\.[0-9]+)', "Socket.IO", 90),
+                (r'/\*[!*]?\s*gsap\s+v?([0-9]+\.[0-9]+\.[0-9]+)', "GSAP", 90),
+                (r'/\*[!*]?\s*GreenSock\s+v?([0-9]+\.[0-9]+\.[0-9]+)', "GSAP", 90),
+                (r'/\*[!*]?\s*Leaflet\s+v?([0-9]+\.[0-9]+\.[0-9]+)', "Leaflet", 90),
+                (r'/\*[!*]?\s*AOS\s+v?([0-9]+\.[0-9]+\.[0-9]+)', "AOS", 85),
+                (r'/\*[!*]?\s*highlight\.js\s+v?([0-9]+\.[0-9]+\.[0-9]+)', "Highlight.js", 85),
+                (r'/\*[!*]?\s*Prism\.js\s+v?([0-9]+\.[0-9]+\.[0-9]+)', "Prism", 85),
+                (r'/\*[!*]?\s*Ember\.js\s+v?([0-9]+\.[0-9]+\.[0-9]+)', "Ember.js", 95),
+            ]
+            for pattern, tech_name, conf in _JS_VERSION_COMMENTS:
+                m = re.search(pattern, html_body, re.IGNORECASE)
+                if m:
+                    ver = m.group(1)
+                    record_detection(tech_name, conf, DeclarativeEvidence(
+                        source="html", matched_value=m.group(0)[:120],
+                        pattern="js_version_comment", confidence=conf, version=ver
+                    ), ver)
+
+        # 7. JavaScript Global Variable & Object Pattern Detection
+        # Catches framework fingerprints embedded in inline scripts
+        if html_body:
+            _JS_GLOBAL_PATTERNS = [
+                (r'jQuery\.fn\.jquery\s*=\s*["\']([0-9.]+)["\']', "jQuery", 100),
+                (r'jQuery\s+v([0-9]+\.[0-9]+\.[0-9]+)', "jQuery", 100),
+                (r'jquery.*?([0-9]+\.[0-9]+\.[0-9]+).*?\.min\.js', "jQuery", 85),
+                (r'Backbone\.VERSION\s*=\s*["\']([0-9.]+)["\']', "Backbone.js", 95),
+                (r'_\.VERSION\s*=\s*["\']([0-9.]+)["\']', "Lodash", 80),
+                (r'Modernizr\s+([0-9]+\.[0-9]+\.[0-9]+)', "Modernizr", 90),
+                (r'window\.__GATSBY', "Gatsby", 95),
+                (r'__gatsby', "Gatsby", 85),
+                (r'window\.__remixContext', "Remix", 95),
+                (r'__remixContext', "Remix", 85),
+                (r'__SVELTE_HMR', "Svelte", 90),
+                (r'Ember\.VERSION\s*=\s*["\']([0-9.]+)["\']', "Ember.js", 95),
+                (r'window\.Shopify', "Shopify", 95),
+                (r'Shopify\.shop\s*=', "Shopify", 95),
+                (r'window\.Webflow', "Webflow", 95),
+                (r'window\.wixBiSession', "Wix", 95),
+                (r'window\.__wix', "Wix", 90),
+                (r'window\.squarespaceContext', "Squarespace", 95),
+                (r'Static\.SQUARESPACE_CONTEXT', "Squarespace", 95),
+                (r'window\.google_tag_manager', "Google Tag Manager", 90),
+                (r'googletagmanager\.com/gtm\.js', "Google Tag Manager", 95),
+                (r'google-analytics\.com/analytics\.js', "Google Analytics", 95),
+                (r'gtag\([\'\"]config[\'\"]\s*,\s*[\'\"]G-', "Google Analytics", 90),
+                (r'gtag\([\'\"]config[\'\"]\s*,\s*[\'\"]UA-', "Google Analytics", 90),
+                (r'connect\.facebook\.net/.*/sdk\.js', "Facebook SDK", 85),
+                (r'platform\.twitter\.com/widgets\.js', "Twitter Widgets", 85),
+                (r'cdn\.jsdelivr\.net/npm/alpinejs', "Alpine.js", 95),
+                (r'x-data\s*=\s*["\']', "Alpine.js", 80),
+                (r'window\.htmx', "htmx", 95),
+                (r'hx-get\s*=|hx-post\s*=|hx-trigger\s*=', "htmx", 90),
+                (r'livewire', "Laravel Livewire", 80),
+                (r'window\.livewire', "Laravel Livewire", 95),
+                (r'Turbo\.connectStreamSource|data-turbo-frame', "Hotwire Turbo", 90),
+                (r'<turbo-frame', "Hotwire Turbo", 95),
+                (r'stimulus', "Stimulus", 70),
+                (r'data-controller\s*=', "Stimulus", 90),
+            ]
+            for pattern, tech_name, conf in _JS_GLOBAL_PATTERNS:
+                m = re.search(pattern, html_body, re.IGNORECASE)
+                if m:
+                    ver = m.group(1) if m.lastindex and m.lastindex >= 1 else None
+                    record_detection(tech_name, conf, DeclarativeEvidence(
+                        source="html", matched_value=m.group(0)[:120],
+                        pattern="js_global_pattern", confidence=conf, version=ver
+                    ), ver)
+
+        # 8. CSS Framework Class & Data-Attribute Detection
+        # Catches UI component frameworks by their characteristic class prefixes
+        if html_body:
+            _CSS_CLASS_PATTERNS = [
+                # (substring_to_check, regex_for_precision, technology_name, confidence)
+                ('class="MuiButton', r'class="[^"]*\bMui[A-Z]', "Material UI (MUI)", 95),
+                ("class='MuiButton", r"class='[^']*\bMui[A-Z]", "Material UI (MUI)", 95),
+                ('class="chakra-', r'class="[^"]*\bchakra-', "Chakra UI", 95),
+                ('class="ant-', r'class="[^"]*\bant-', "Ant Design", 95),
+                ('class="el-', r'class="[^"]*\bel-[a-z]', "Element UI", 90),
+                ('class="v-btn', r'class="[^"]*\bv-(?:btn|card|app|toolbar|list)', "Vuetify", 90),
+                ('data-bs-', r'data-bs-(?:toggle|target|dismiss|ride)', "Bootstrap", 90),
+                ('class="btn btn-', r'class="[^"]*\bbtn\s+btn-(?:primary|secondary|success|danger|warning|info)', "Bootstrap", 75),
+                ('class="fa ', r'class="[^"]*\bfa[srbl]?\s+fa-', "Font Awesome", 90),
+                ('class="fas ', r'class="[^"]*\bfas\s+fa-', "Font Awesome", 90),
+                ('class="bi ', r'class="[^"]*\bbi\s+bi-', "Bootstrap Icons", 85),
+                ('class="material-icons', r'class="[^"]*\bmaterial-icons', "Google Material Icons", 85),
+                ('class="mdi ', r'class="[^"]*\bmdi\s+mdi-', "Material Design Icons", 85),
+                ('class="ion-', r'class="[^"]*\bion-', "Ionicons", 80),
+                ('class="ti-', r'class="[^"]*\bti-[a-z]', "Themify Icons", 75),
+                ('class="glyphicon', r'class="[^"]*\bglyphicon\s+glyphicon-', "Bootstrap (Glyphicons)", 85),
+                ('class="uk-', r'class="[^"]*\buk-(?:grid|container|section|navbar|card)', "UIkit", 90),
+                ('class="pure-', r'class="[^"]*\bpure-(?:g|u|menu|table|form|button)', "Pure.css", 85),
+                ('class="foundation', r'class="[^"]*\b(?:row|columns|small-|medium-|large-)\d', "Foundation", 75),
+                ('class="w3-', r'class="[^"]*\bw3-(?:container|row|col|bar|btn|card)', "W3.CSS", 85),
+                ('class="bulma', r'class="[^"]*\b(?:is-primary|is-info|is-success|column|hero)\b', "Bulma", 70),
+                ('class="tailwind', None, "Tailwind CSS", 60),
+                ('class="prose ', r'class="[^"]*\bprose\b', "Tailwind CSS", 60),
+                ('class="sr-only', None, "Bootstrap", 60),
+            ]
+            html_lower = html_body[:500000]  # Limit scan to first 500KB for performance
+            for substring, regex, tech_name, conf in _CSS_CLASS_PATTERNS:
+                if substring in html_lower:
+                    if regex:
+                        m = re.search(regex, html_lower)
+                        if m:
+                            record_detection(tech_name, conf, DeclarativeEvidence(
+                                source="html", matched_value=m.group(0)[:100],
+                                pattern="css_class_pattern", confidence=conf
+                            ), None)
+                    else:
+                        record_detection(tech_name, conf, DeclarativeEvidence(
+                            source="html", matched_value=substring,
+                            pattern="css_class_pattern", confidence=conf
+                        ), None)
+
+        # 9. URL Path Structure Fingerprinting
+        # Detect technologies from characteristic asset paths embedded in the page
+        if html_body:
+            _URL_PATH_PATTERNS = [
+                # (regex_pattern, technology_name, confidence, version_group_or_none)
+                (r'/wp-content/(?:themes|plugins|uploads)/', "WordPress", 100, None),
+                (r'/wp-includes/(?:js|css|images)/', "WordPress", 100, None),
+                (r'/wp-json/', "WordPress", 95, None),
+                (r'/xmlrpc\.php', "WordPress", 90, None),
+                (r'/sites/default/files/', "Drupal", 95, None),
+                (r'/core/misc/drupal\.js', "Drupal", 100, None),
+                (r'/misc/drupal\.js', "Drupal", 95, None),
+                (r'/modules/(?:system|node|user|field)/', "Drupal", 85, None),
+                (r'/media/(?:system|jui|com_)/', "Joomla", 90, None),
+                (r'/administrator/', "Joomla", 70, None),
+                (r'/templates/(?:system|beez|protostar)/', "Joomla", 90, None),
+                (r'/_next/static/', "Next.js", 100, None),
+                (r'/_next/data/', "Next.js", 100, None),
+                (r'/_nuxt/', "Nuxt.js", 100, None),
+                (r'/__remix/', "Remix", 100, None),
+                (r'/assets/(?:[a-z0-9]+-)?[a-f0-9]{8}\.(?:js|css)', "Vite", 70, None),
+                (r'/build/assets/[^"\']+\.(?:js|css)', "Laravel Mix/Vite", 65, None),
+                (r'/static/(?:js|css)/main\.[a-f0-9]+\.(?:js|css)', "Create React App", 85, None),
+                (r'/bundles/[a-z]+bundle/', "Symfony", 85, None),
+                (r'/static/CACHE/(?:js|css)/', "Django", 80, None),
+                (r'/assets/application-[a-f0-9]+\.(?:js|css)', "Ruby on Rails", 80, None),
+                (r'/packs/js/', "Ruby on Rails (Webpacker)", 85, None),
+                (r'cdn\.shopify\.com/s/files/', "Shopify", 100, None),
+                (r'squarespace\.com/', "Squarespace", 90, None),
+                (r'static\.wixstatic\.com/', "Wix", 100, None),
+                (r'parastorage\.com/', "Wix", 95, None),
+                (r'webflow\.com/', "Webflow", 90, None),
+                (r'/ghost/api/', "Ghost", 95, None),
+                (r'ghost\.io/', "Ghost", 90, None),
+                (r'/typo3/', "TYPO3", 95, None),
+                (r'/fileadmin/', "TYPO3", 75, None),
+                (r'/umbraco/', "Umbraco", 95, None),
+                (r'/sitecore/', "Sitecore", 95, None),
+                (r'/kentico/', "Kentico", 95, None),
+                (r'cdn\.ampproject\.org/', "AMP", 95, None),
+                (r'/ember-cli/', "Ember.js", 90, None),
+            ]
+            for pattern, tech_name, conf, ver_grp in _URL_PATH_PATTERNS:
+                m = re.search(pattern, html_body, re.IGNORECASE)
+                if m:
+                    ver = m.group(ver_grp) if ver_grp and m.lastindex and m.lastindex >= ver_grp else None
+                    record_detection(tech_name, conf, DeclarativeEvidence(
+                        source="html", matched_value=m.group(0)[:120],
+                        pattern="url_path_fingerprint", confidence=conf, version=ver
+                    ), ver)
+
+        # ── END NEW DETECTION PHASES ─────────────────────────────────────
+
+        # 10. Implication Graph & Exclusion Resolution
         resolved_map = ImplicationResolver.resolve(detected_map, self.loader.technology_rules)
 
         # 7. Construct TechnologyFingerprint objects
