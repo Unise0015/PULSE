@@ -1,42 +1,43 @@
-<!-- ── Website Technology Section ── -->
 {% for section in report.sections %}
 {% if section.__class__.__name__ == 'WebsiteAssessmentSection' %}
-<div class="section-container">
-  <h2>Website Technology Assessment</h2>
-  <div class="meta-line">URL: <strong>{{ section.url }}</strong> | Status: <strong>{{ section.correlation_status }}</strong></div>
-  
-  <div class="table-wrapper" style="margin-top:15px;">
+<section class="section-container website-section" aria-labelledby="website-title">
+  <h2 id="website-title">Website Assessment</h2>
+  <p class="meta-line">{{ section.url }}</p>
+  <div class="card-grid">
+    <div class="stat-card"><div class="stat-title">Website access</div><div class="stat-value">{{ section.acquisition_status }}</div><div class="stat-sub">HTTP {{ section.http_status or 'response unavailable' }}</div></div>
+    <div class="stat-card"><div class="stat-title">Technologies detected</div><div class="stat-value">{{ section.technologies | length }}</div><div class="stat-sub">Fingerprint evidence from the observed page</div></div>
+    <div class="stat-card"><div class="stat-title">Vulnerability correlation</div><div class="stat-value">{{ section.correlation_status }}</div><div class="stat-sub">{{ section.technologies | selectattr('correlated') | list | length }} technologies with recorded results</div></div>
+  </div>
+  <p class="next-step"><strong>Next step</strong><br>{{ section.next_step }}</p>
+  <h3>Technology inventory</h3>
+  <p class="dim-small">Detection confidence describes fingerprint evidence, not security. An unchecked result has no vulnerability count.</p>
+  {% if section.technologies %}
+  <div class="table-wrapper" tabindex="0" role="region" aria-label="Technology inventory; scroll horizontally on small screens">
     <table class="data-table">
-      <thead>
-        <tr>
-          <th>Technology</th>
-          <th>Version</th>
-          <th>Category</th>
-          <th>Confidence</th>
-          <th>Correlation Supported</th>
-          <th>Vulnerabilities Found</th>
-        </tr>
-      </thead>
+      <thead><tr><th scope="col">Technology</th><th scope="col">Version</th><th scope="col">Confidence</th><th scope="col">Vulnerability check</th><th scope="col">Findings</th></tr></thead>
       <tbody>
-        {% for t in section.technologies %}
+      {% for t in section.technologies %}
         <tr>
-          <td><strong>{{ t.name }}</strong></td>
-          <td>{{ t.version or 'Unknown' }}</td>
-          <td><span class="tech-tag">{{ t.category }}</span></td>
-          <td>{{ t.confidence }}%</td>
-          <td>{{ 'Yes' if t.correlated else 'No' }}</td>
-          <td>
-            {% if t.vulnerability_count > 0 %}
-              <span class="text-red bold">{{ t.vulnerability_count }}</span>
-            {% else %}
-              <span class="text-green">0</span>
-            {% endif %}
-          </td>
+          <td><strong>{{ t.name }}</strong><br><span class="dim-small">{{ t.category }}</span></td>
+          <td>{{ t.version or 'Unknown' }}</td><td>{{ t.confidence }}%</td>
+          <td>{{ t.correlation_status }}{% if t.correlation_reason %}<details><summary>Check details</summary><p>{{ t.correlation_reason }}</p></details>{% endif %}</td>
+          <td>{% if t.vulnerability_count %}<span class="text-red bold">{{ t.vulnerability_count }}</span>{% elif t.correlated %}0{% else %}<span class="dim">Not established</span>{% endif %}</td>
         </tr>
-        {% endfor %}
+      {% endfor %}
       </tbody>
     </table>
   </div>
-</div>
+  {% else %}<p class="next-step">No technologies detected. This does not establish that the website is secure.</p>{% endif %}
+  <h3>Security headers</h3>
+  {% if section.security_headers %}
+  <p class="dim-small">Observed response headers. Presence alone does not prove a secure configuration.</p>
+  <div class="table-wrapper" tabindex="0" role="region" aria-label="Security header results; scroll horizontally on small screens">
+    <table class="data-table">
+      <thead><tr><th scope="col">Header</th><th scope="col">Status</th><th scope="col">Details / guidance</th></tr></thead>
+      <tbody>{% for header in section.security_headers %}<tr><td>{{ header.header_name }}</td><td>{{ header.status }}</td><td>{{ header.details }}</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+  {% else %}<p class="next-step">Security headers were not assessed or were not recorded. Scan the website again to collect them.</p>{% endif %}
+</section>
 {% endif %}
 {% endfor %}

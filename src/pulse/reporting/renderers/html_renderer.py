@@ -12,7 +12,7 @@ class HTMLRenderer(BaseRenderer):
             template_dir = Path(__file__).parent.parent / "templates"
         self.env = Environment(
             loader=FileSystemLoader(str(template_dir)),
-            autoescape=False
+            autoescape=True
         )
         self.env.filters["datetime_fmt"] = self._datetime_fmt
         self.env.filters["duration_fmt"] = self._duration_fmt

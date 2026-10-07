@@ -133,6 +133,7 @@ class ScanService:
             attack_surface_score=attack_surface_score,
             scan_duration_seconds=duration,
             findings=findings,
+            warnings=list(enrich_result.warnings),
             detected_ecosystems=detected_ecosystems,
             plugin_diagnostics=plugin_diagnostics,
             target_type="project",

@@ -28,6 +28,7 @@ class ExecutiveSummaryModel:
     packages_scanned: int
     vulnerable_count: int
     attack_surface_score: int
+    assessment_complete: bool = True
 
 @dataclass
 class RiskSummaryModel:
@@ -70,6 +71,7 @@ class WebsiteTechnologyModel:
     vulnerability_count: int
     correlation_status: str = "Detection Only"
     intelligence_sources: List[str] = field(default_factory=list)
+    correlation_reason: str = ""
 
 @dataclass
 class PackageInventoryItem:
@@ -95,6 +97,10 @@ class WebsiteAssessmentSection(BaseSection):
     url: str
     correlation_status: str
     technologies: List[WebsiteTechnologyModel] = field(default_factory=list)
+    acquisition_status: str = "OK"
+    http_status: int = 0
+    next_step: str = ""
+    security_headers: List[Any] = field(default_factory=list)
 
 @dataclass
 class DependencyInventorySection(BaseSection):
@@ -120,3 +126,4 @@ class ReportModel:
     findings: List[ReportFindingModel]
     sections: List[BaseSection] = field(default_factory=list)
     metadata: ReportMetadata = field(default_factory=lambda: ReportMetadata(pulse_version="4.0.0"))
+    warnings: List[str] = field(default_factory=list)

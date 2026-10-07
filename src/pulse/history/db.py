@@ -74,6 +74,7 @@ def init_db(db_path_override: Optional[Path] = None) -> None:
             ("scan_integrity", "TEXT DEFAULT NULL"),
             ("provider_status_json", "TEXT DEFAULT NULL"),
             ("warnings_json", "TEXT DEFAULT NULL"),
+            ("website_state_json", "TEXT DEFAULT NULL"),
             ("recommendations_json", "TEXT DEFAULT NULL")
         ]
         for col_name, col_def in scan_runs_columns:

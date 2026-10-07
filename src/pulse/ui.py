@@ -190,10 +190,18 @@ def print_provider_observability(console, scan: ScanResult):
 
 
 def print_security_summary(console, scan: ScanResult, compact: bool = False):
+    if scan.assessment_warnings:
+        warning_text = Text("Assessment incomplete — results may be partial.\n", style="bold yellow")
+        for warning in scan.assessment_warnings:
+            warning_text.append(f"• {warning}\n", style="yellow")
+        console.print(Panel(warning_text, title="Scan coverage", expand=False))
     if not scan.findings and scan.vulnerable_packages_count == 0:
         summary_text = Text()
         summary_text.append(f"{'Dependencies Scanned:':<28} {scan.packages_scanned}\n", style="bold")
-        summary_text.append(f"[bold green]No vulnerabilities detected[/bold green]")
+        if scan.assessment_warnings:
+            summary_text.append("No findings returned; incomplete checks cannot establish a clean result.", style="yellow")
+        else:
+            summary_text.append("No known vulnerabilities detected in completed checks.", style="green")
         console.print(Panel(
             summary_text,
             box=box.SQUARE,
@@ -1044,7 +1052,8 @@ def print_website_correlation_summary(console, scan: ScanResult):
             else:
                 highest_risk_tech = tech_key
                 
-    text.append(f"Highest Risk:\n{highest_risk_tech}")
+    from rich.markup import escape
+    text.append(f"Highest Risk:\n{escape(highest_risk_tech)}")
     
     console.print(Panel(
         "".join(text),
@@ -1056,268 +1065,75 @@ def print_website_correlation_summary(console, scan: ScanResult):
 
 
 def print_website_assessment_summary(console, scan: ScanResult):
-    if not scan.website_assessment:
-        return
-        
+    from pulse.website.presentation import technology_views, next_step, value
     wa = scan.website_assessment
-    from pulse.domain.models import CorrelationStatus
-    
-    categories = {
-        "CDN": [],
-        "Backend": [],
-        "Frontend": [],
-        "Web Server": []
-    }
-    
-    for t in wa.technologies:
-        from pulse.website.technology_catalog import TECHNOLOGY_CATALOG
-        tech_key = t.name.lower()
-        catalog_entry = TECHNOLOGY_CATALOG.get(tech_key)
-        display_name = catalog_entry.get("display_name", t.name) if catalog_entry else t.name
-        
-        name_str = f"{display_name} {t.version}" if t.version else display_name
-        cat_val = t.category.value if hasattr(t.category, "value") else str(t.category)
-        
-        if cat_val == "CDN":
-            categories["CDN"].append(name_str)
-        elif cat_val == "Web Server":
-            categories["Web Server"].append(name_str)
-        elif cat_val == "Frontend Library":
-            categories["Frontend"].append(name_str)
-        else:
-            categories["Backend"].append(name_str)
-            
-    text = []
-    text.append(f"Target:\n{wa.url}\n\n")
-    text.append(f"Technologies Found: {len(wa.technologies)}\n\n")
-    
-    for cat in ["Frontend", "Backend", "CDN", "Web Server"]:
-        items = categories[cat]
-        if items or cat in ("Frontend", "Backend"):
-            text.append(f"{cat}\n")
-            if items:
-                for item in items:
-                    text.append(f" • {item}\n")
-            else:
-                text.append(" • None\n")
-            text.append("\n")
-            
-    # Coverage — uses stored eligibility results (Single Source of Truth)
-    from pulse.website.capability import CorrelationEligibilityStatus, evaluate_correlation_eligibility
-    eligibilities = getattr(wa, 'technology_eligibilities', {})
-    if eligibilities:
-        elig_values = list(eligibilities.values())
-    else:
-        elig_values = [evaluate_correlation_eligibility(t) for t in wa.technologies]
-    
-    count_correlatable = sum(1 for e in elig_values if e.status in (CorrelationEligibilityStatus.CORRELATABLE, CorrelationEligibilityStatus.PARTIALLY_CORRELATABLE))
-    count_version_req = sum(1 for e in elig_values if e.status == CorrelationEligibilityStatus.VERSION_REQUIRED)
-    count_detection = sum(1 for e in elig_values if e.status == CorrelationEligibilityStatus.DETECTION_ONLY)
-    count_unavail = sum(1 for e in elig_values if e.status in (
-        CorrelationEligibilityStatus.CORRELATION_UNAVAILABLE,
-        CorrelationEligibilityStatus.INTELLIGENCE_UNAVAILABLE,
-        CorrelationEligibilityStatus.RESOLUTION_FAILED,
-        CorrelationEligibilityStatus.CONFIDENCE_TOO_LOW,
-    ))
-    
-    text.append("Correlation\n")
-    text.append(f" • Correlated: {count_correlatable}\n")
-    if count_version_req > 0:
-        text.append(f" • Version Required: {count_version_req}\n")
-    if count_detection > 0:
-        text.append(f" • Detection Only: {count_detection}\n")
-    if count_unavail > 0:
-        text.append(f" • Correlation Unavailable: {count_unavail}\n")
-    text.append("\n")
-    
-    is_correlated = wa.correlation_status in (CorrelationStatus.COMPLETED, CorrelationStatus.PARTIAL)
-    if is_correlated:
-        total_vulns = len(getattr(scan, "findings", []))
-        text.append("Vulnerability Intelligence\n")
-        text.append(f" • Technologies Correlated: {wa.correlated_technologies}\n")
-        text.append(f" • Vulnerabilities Found: {total_vulns}\n")
-        if total_vulns > 0:
-            highest_risk_finding = max(scan.findings, key=lambda f: f.risk_heat_score)
-            text.append(f" • Highest Risk: {highest_risk_finding.package.name} {highest_risk_finding.package.version}\n")
-    else:
-        status_val = wa.correlation_status.value if hasattr(wa.correlation_status, "value") else str(wa.correlation_status)
-        text.append(f"Vulnerability Correlation:\n • {status_val}")
-    
-    console.print(Panel(
-        "".join(text),
-        title="[bold]Website Assessment Summary[/bold]",
-        border_style="cyan",
-        box=box.SQUARE,
-        expand=False
-    ))
+    if not wa:
+        return
+    rows = technology_views(scan)
+    summary = Text()
+    summary.append(f"Target: {wa.url}\n", style="bold")
+    http_status = str(wa.status_code) if wa.status_code else "No response"
+    summary.append(f"Acquisition: {wa.status} · HTTP {http_status}\n")
+    summary.append(f"Detected: {len(rows)} · With recorded results: {sum(r.checked for r in rows)}\n")
+    summary.append(f"Vulnerability correlation: {value(wa.correlation_status)}\n")
+    summary.append(f"Findings: {len(scan.findings)}\n")
+    if scan.assessment_warnings:
+        summary.append("\nCoverage warnings\n", style="bold yellow")
+        for warning in scan.assessment_warnings:
+            summary.append(f"• {warning}\n")
+    summary.append(f"\nNext: {next_step(scan)}", style="cyan")
+    console.print(Panel(summary, title="Website Assessment", border_style="cyan", box=box.SQUARE))
 
 
 def print_technologies_view(console, scan: ScanResult):
-    if not scan.website_assessment:
-        return
-        
+    from pulse.website.presentation import technology_views, value
     wa = scan.website_assessment
-    from pulse.website.technology_catalog import TECHNOLOGY_CATALOG
-    from pulse.domain.models import CorrelationStatus, FindingSourceType
-    
-    is_correlated = wa.correlation_status in (CorrelationStatus.COMPLETED, CorrelationStatus.PARTIAL)
-    
-    title = "[bold blue]Technology Inventory[/bold blue]" if not is_correlated else "[bold blue]Technology Inventory & Vulnerability Status[/bold blue]"
-    
-    table = Table(
-        title=title,
-        border_style="blue",
-        box=box.SQUARE,
-        show_lines=True,
-    )
-    
-    table.add_column("Technology", style="bold cyan")
-    table.add_column("Version", style="green", justify="center")
-    table.add_column("Category", style="dim")
-    
-    if not is_correlated:
-        table.add_column("Confidence", justify="center")
-        table.add_column("Coverage", justify="center")
-    else:
-        table.add_column("CVEs", justify="center", style="bold magenta")
-        table.add_column("Risk", justify="center", style="bold red")
-        table.add_column("Status", justify="center")
-        
-    from pulse.website.capability import CorrelationEligibilityStatus, evaluate_correlation_eligibility
-    eligibilities = getattr(wa, 'technology_eligibilities', {})
-    corr_results = getattr(wa, 'technology_correlation_results', {})
-    
-    for t in sorted(wa.technologies, key=lambda x: x.confidence, reverse=True):
-        # Resolve display name
-        tech_key = t.name.lower()
-        catalog_entry = TECHNOLOGY_CATALOG.get(tech_key)
-        display_name = catalog_entry.get("display_name", t.name) if catalog_entry else t.name
-        
-        # Coverage string — from stored eligibility (Single Source of Truth)
-        tech_id = getattr(t, "signature_id", "") or tech_key
-        elig = eligibilities.get(tech_id)
-        if not elig:
-            elig = evaluate_correlation_eligibility(t)
-        coverage_str = elig.status.value
-            
-        version_str = t.version or "Unknown"
-        
-        if not is_correlated:
-            # Confidence string formatting
-            conf_band_style = {
-                "VERIFIED": "bold green",
-                "HIGH": "bold green",
-                "MEDIUM": "bold yellow",
-                "LOW": "dim"
-            }.get(t.confidence_band.value if hasattr(t.confidence_band, "value") else str(t.confidence_band).upper(), "white")
-            conf_band_val = t.confidence_band.value if hasattr(t.confidence_band, 'value') else t.confidence_band
-            conf_str = f"[{conf_band_style}]{conf_band_val} ({t.confidence})[/{conf_band_style}]"
-            
-            table.add_row(
-                display_name,
-                version_str,
-                t.category.value if hasattr(t.category, 'value') else str(t.category),
-                conf_str,
-                coverage_str
-            )
-        else:
-            # Get structured correlation result
-            c_res = corr_results.get(t.name)
-            tech_findings = c_res.vulnerabilities if c_res else [
-                f for f in getattr(scan, "findings", [])
-                if getattr(f, "source_type", None) == FindingSourceType.WEBSITE
-                and getattr(f, "source_asset", "").lower() == t.name.lower()
-            ]
-            cve_count = len(tech_findings)
-            
-            if c_res:
-                corr_stat = c_res.correlation_status
-            else:
-                corr_stat = "VULNERABILITIES_FOUND" if cve_count > 0 else ("NO_KNOWN_VULNERABILITIES" if elig.is_eligible and elig.version_available else elig.status.value)
-
-            if corr_stat == "VULNERABILITIES_FOUND":
-                cve_display = str(cve_count)
-                severity_order = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
-                highest_finding = max(tech_findings, key=lambda f: severity_order.get(f.cvss_severity.value.upper() if hasattr(f.cvss_severity, "value") else f.cvss_severity.upper(), 0))
-                sev_name = highest_finding.cvss_severity.value.capitalize() if hasattr(highest_finding.cvss_severity, "value") else highest_finding.cvss_severity.capitalize()
-                sev_color = {
-                    "CRITICAL": "bold red",
-                    "HIGH": "bold dark_orange",
-                    "MEDIUM": "bold yellow",
-                    "LOW": "bold green"
-                }.get(highest_finding.cvss_severity.value.upper() if hasattr(highest_finding.cvss_severity, "value") else highest_finding.cvss_severity.upper(), "white")
-                risk_display = f"[{sev_color}]{sev_name}[/{sev_color}]"
-                status_display = "[bold red]Vulnerable[/bold red]"
-            elif corr_stat == "NO_KNOWN_VULNERABILITIES":
-                cve_display = "0"
-                risk_display = "[green]None[/green]"
-                status_display = "[bold green]Clean[/bold green]"
-            elif corr_stat == "VERSION_REQUIRED":
-                cve_display = "-"
-                risk_display = "N/A"
-                status_display = "[yellow]Version Req[/yellow]"
-            elif corr_stat == "DETECTION_ONLY":
-                cve_display = "-"
-                risk_display = "N/A"
-                status_display = "[dim]Detection Only[/dim]"
-            else:
-                cve_display = "-"
-                risk_display = "N/A"
-                status_display = "[red]Unavailable[/red]"
-                
-            table.add_row(
-                display_name,
-                version_str,
-                t.category.value if hasattr(t.category, 'value') else str(t.category),
-                cve_display,
-                risk_display,
-                status_display
-            )
-            
+    if not wa:
+        return
+    rows = technology_views(scan)
+    if not rows:
+        console.print(Text("No technologies detected. Review the assessment summary for acquisition warnings."))
+        return
+    table = Table(title="Technology Inventory", border_style="blue", box=box.SQUARE, show_lines=True)
+    for name in ("Technology / Version", "Category", "Confidence", "Vulnerability check", "Findings"):
+        table.add_column(name)
+    for row in rows:
+        tech = row.technology
+        style = "red" if row.findings else "green" if row.checked else "yellow"
+        table.add_row(
+            Text(f"{tech.name}\n{tech.version or 'Unknown version'}", style="bold cyan"),
+            Text(value(tech.category)), Text(f"{tech.confidence}%"),
+            Text(f"{row.label}\n{row.reason}", style=style),
+            Text(str(len(row.findings)) if row.checked else "—"),
+        )
     console.print(table)
-    console.print()
-    
-    # Print detailed Evidence Tree
-    console.print("[bold blue]Technology Detection Evidence Tree[/bold blue]")
-    roots = [t for t in wa.technologies if not t.parent]
+
+    # Iterative traversal includes orphans and cycles without recursion failures.
+    root = Tree("Detection evidence")
     tech_map = {t.name: t for t in wa.technologies}
-    
-    def add_tech_node(tree_node, t):
-        v_str = f" v{t.version}" if t.version else ""
-        c_band = t.confidence_band.value if hasattr(t.confidence_band, 'value') else t.confidence_band
-        header_text = f"[bold cyan]{t.name}[/bold cyan]{v_str} [dim]({t.category.value if hasattr(t.category, 'value') else t.category})[/dim] - [bold]{c_band}[/bold] ({t.confidence}%)"
-        
-        tech_branch = tree_node.add(header_text)
-        
-        if t.version_evidence:
-            v_ev = t.version_evidence
-            tech_branch.add(f"[green]Version Evidence ({v_ev.method.value if hasattr(v_ev.method, 'value') else v_ev.method}):[/green] [dim]{v_ev.source} -> {v_ev.value}[/dim] (Confidence: {v_ev.confidence}%)")
-            
-        if t.evidence:
-            ev_branch = tech_branch.add("[bold yellow]Evidence Signals[/bold yellow]")
-            for ev in t.evidence:
-                rel_style = {
-                    "VERIFIED": "bold green",
-                    "HIGH": "green",
-                    "MEDIUM": "yellow",
-                    "LOW": "dim"
-                }.get(ev.reliability.value if hasattr(ev.reliability, "value") else str(ev.reliability).upper(), "white")
-                
-                rel_str = f"[{rel_style}]Reliability: {ev.reliability.value if hasattr(ev.reliability, 'value') else ev.reliability}[/{rel_style}]"
-                ev_branch.add(f"• [bold]{ev.method.value if hasattr(ev.method, 'value') else ev.method}[/bold] ({ev.source}): {ev.value} - [dim]{ev.description}[/dim] ({rel_str}, Confidence: {ev.confidence}%)")
-                
-        for child_name in t.children:
-            child_fp = tech_map.get(child_name)
-            if child_fp:
-                add_tech_node(tech_branch, child_fp)
-                
-    root_tree = Tree("[bold green]Detected Web Stack[/bold green]")
-    for r in roots:
-        add_tech_node(root_tree, r)
-        
-    console.print(root_tree)
-    console.print()
-    
+    visited = set()
+    ordered = [t for t in wa.technologies if not t.parent] + wa.technologies
+    for tech in ordered:
+        stack = [(root, tech)]
+        while stack:
+            parent, current = stack.pop()
+            if current.name in visited:
+                continue
+            visited.add(current.name)
+            branch = parent.add(Text(f"{current.name} {current.version or ''}", style="bold cyan"))
+            evidence = list(current.evidence)
+            if current.version_evidence and current.version_evidence not in evidence:
+                evidence.insert(0, current.version_evidence)
+            for ev in evidence:
+                branch.add(Text(f"{value(ev.method)} · {ev.source}: {ev.value} — {ev.description} ({ev.confidence}%)"))
+            if not evidence:
+                branch.add(Text("No detailed evidence recorded", style="dim"))
+            for child in reversed(current.children):
+                if child in tech_map and child not in visited:
+                    stack.append((branch, tech_map[child]))
+    console.print(root)
+
+
     # --- Technology Changes (Drift) View ---
     from pulse.history.history import HistoryService
     from pulse.website.inventory.delta import compare_inventory
@@ -1336,47 +1152,33 @@ def print_technologies_view(console, scan: ScanResult):
             if delta.added or delta.removed or delta.upgraded or delta.downgraded:
                 console.print("[bold blue]Technology Changes[/bold blue]")
                 for item in delta.added:
-                    console.print(f"[green]+ {item}[/green]")
+                    console.print(Text(f"+ {item}", style="green"))
                 for change in delta.upgraded:
-                    console.print(f"[yellow]↑ {change.technology} {change.previous_version} -> {change.current_version}[/yellow]")
+                    console.print(Text(f"↑ {change.technology} {change.previous_version} -> {change.current_version}", style="yellow"))
                 for change in delta.downgraded:
-                    console.print(f"[red]↓ {change.technology} {change.previous_version} -> {change.current_version}[/red]")
+                    console.print(Text(f"↓ {change.technology} {change.previous_version} -> {change.current_version}", style="red"))
                 for item in delta.removed:
-                    console.print(f"[red]- {item}[/red]")
+                    console.print(Text(f"- {item}", style="red"))
                 console.print()
     except Exception:
         pass
 
 def print_security_headers_view(console, scan: ScanResult):
-    if not scan.website_assessment:
+    wa = scan.website_assessment
+    if not wa:
         return
-        
-    table = Table(
-        title="[bold magenta]Security Headers Assessment[/bold magenta]",
-        border_style="magenta",
-        box=box.SQUARE,
-        show_lines=True,
-    )
-    table.add_column("Header", style="bold")
-    table.add_column("Status", justify="center")
-    table.add_column("Details", style="dim")
-    
-    for h in scan.website_assessment.security_headers:
-        if h.status == "Present":
-            status_str = "[bold green]Present[/bold green]"
-        elif h.status == "Missing":
-            status_str = "[bold red]Missing[/bold red]"
-        else:
-            status_str = f"[bold yellow]{h.status}[/bold yellow]"
-            
-        table.add_row(
-            h.header_name,
-            status_str,
-            h.details
-        )
-        
+    if not wa.security_headers:
+        console.print(Text("Security headers were not assessed or were not recorded. Scan the website again to collect them.", style="yellow"))
+        return
+    attention = sum(h.status != "Present" for h in wa.security_headers)
+    console.print(Text(f"{attention} of {len(wa.security_headers)} header checks need review. Header presence alone does not prove a secure configuration."))
+    table = Table(title="Security Headers", border_style="magenta", box=box.SQUARE, show_lines=True)
+    for name in ("Header", "Status", "Details / guidance"):
+        table.add_column(name)
+    for header in wa.security_headers:
+        table.add_row(Text(header.header_name), Text(header.status,
+                      style="green" if header.status == "Present" else "yellow"), Text(header.details))
     console.print(table)
-    console.print()
 
 
 def render_cve_details(console, finding: VulnerabilityFinding) -> None:

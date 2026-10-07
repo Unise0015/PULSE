@@ -12,10 +12,10 @@ from pulse.website.signatures import SignatureRegistry
 from pulse.website.confidence import WeightedMaxBonusCalculator, get_confidence_band
 from pulse.website.declarative_engine import DeclarativeSignatureEngine
 from pulse.website.favicon_fingerprint import FaviconFingerprinter
+from pulse.website.acquisition import fetch_observation, validate_url, WebsiteURLPolicyError
 
-import ipaddress
 import logging
-from urllib.parse import urlparse, urljoin
+from urllib.parse import urljoin
 from pulse.config import get_setting
 
 logger = logging.getLogger(__name__)
@@ -33,37 +33,6 @@ def get_declarative_engine() -> DeclarativeSignatureEngine:
     return _DECLARATIVE_ENGINE
 
 
-def validate_url(url: str, external_only: bool = False) -> Tuple[bool, str]:
-    """Pre-request URL validator. Rejects malformed URLs and unsupported protocols."""
-    if not url or not isinstance(url, str) or not url.strip():
-        return False, "Invalid URL: Empty target string provided"
-
-    raw_url = url.strip()
-    try:
-        parsed = urlparse(raw_url)
-    except Exception as e:
-        return False, f"Invalid URL structure: {e}"
-
-    if not parsed.scheme or parsed.scheme.lower() not in ("http", "https"):
-        return False, f"Invalid URL scheme '{parsed.scheme}'. Only http:// and https:// protocols are supported."
-
-    hostname = parsed.hostname
-    if not hostname:
-        return False, "Invalid URL: Missing hostname or domain"
-
-    if external_only:
-        if hostname.lower() in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
-            return False, f"External-only policy enforced: Target '{hostname}' is localhost/loopback"
-
-        try:
-            ip = ipaddress.ip_address(hostname)
-            if ip.is_private or ip.is_loopback or ip.is_link_local:
-                return False, f"External-only policy enforced: Target '{hostname}' is a private or internal IP"
-        except ValueError:
-            pass
-
-    return True, "URL is valid"
-
 class WebsiteFingerprintAnalyzer:
     """Analyzes web assets passively for technologies and security headers."""
 
@@ -72,6 +41,14 @@ class WebsiteFingerprintAnalyzer:
         self.security_headers: List[SecurityHeaderStatus] = []
 
     def scan(self, url: str) -> WebsiteAssessment:
+        self.technologies = []
+        self.security_headers = []
+        warnings = []
+        url = url.strip() if isinstance(url, str) else url
+        from pulse.state import AppState
+        if AppState.OFFLINE_MODE:
+            return WebsiteAssessment(url=url, status="OFFLINE", status_code=0,
+                                     warnings=["Website acquisition is unavailable in offline mode"])
         ext_only = get_setting("EXTERNAL_ONLY", "false").lower() in ("true", "1", "yes")
         is_valid, err_msg = validate_url(url, external_only=ext_only)
         if not is_valid:
@@ -80,6 +57,7 @@ class WebsiteFingerprintAnalyzer:
                 url=url,
                 status="INVALID",
                 status_code=0,
+                warnings=[err_msg],
                 technologies=[],
                 security_headers=[]
             )
@@ -93,32 +71,37 @@ class WebsiteFingerprintAnalyzer:
         cookies = {}
         
         try:
-            with httpx.Client(timeout=TIMEOUT, follow_redirects=True, max_redirects=MAX_REDIRECTS) as client:
-                with client.stream("GET", url, headers=headers) as response:
-                    response_headers = dict(response.headers)
-                    cookies = dict(response.cookies)
-                    
-                    # Read up to MAX_BODY_SIZE
-                    bytes_read = 0
-                    chunks = []
-                    for chunk in response.iter_bytes(chunk_size=8192):
-                        bytes_read += len(chunk)
-                        if bytes_read > MAX_BODY_SIZE:
-                            chunks.append(chunk[:len(chunk) - (bytes_read - MAX_BODY_SIZE)])
-                            break
-                        chunks.append(chunk)
-                        
-                    body = b"".join(chunks).decode('utf-8', errors='ignore')
-        except Exception:
-            # Return what we have (empty) if request fails
-            pass
+            response = fetch_observation(url, timeout=TIMEOUT, max_bytes=MAX_BODY_SIZE, headers=headers, external_only=ext_only)
+            response_headers = response.headers
+            cookies = dict(response.cookies)
+            body = response.text
+            url = str(response.url)
+            if response.extensions.get("pulse_body_limit_reached"):
+                warnings.append("Website response reached the download limit; evidence may be incomplete")
+            if response.status_code >= 400:
+                warnings.append(f"Website returned HTTP {response.status_code}; evidence may be incomplete")
+        except WebsiteURLPolicyError as exc:
+            return WebsiteAssessment(url=url, status="INVALID", status_code=0, warnings=[str(exc)])
+        except (httpx.HTTPError, httpx.InvalidURL) as exc:
+            return WebsiteAssessment(url=url, status="ERROR", status_code=0,
+                                     warnings=[{
+                                         "ConnectError": "Could not connect to the website. Check the hostname, TLS certificate, and network connection.",
+                                         "ConnectTimeout": "Connection timed out. Check the website is reachable and retry.",
+                                         "ReadTimeout": "The website took too long to respond. Retry the scan.",
+                                         "TooManyRedirects": "The website exceeded the redirect limit. Check the URL and redirect configuration.",
+                                     }.get(type(exc).__name__, f"Website request failed ({type(exc).__name__}). Check the URL and retry.")])
             
         script_srcs = []
         if body:
             script_srcs = re.findall(r'<script[^>]+src=["\']([^"\']+)["\']', body, re.IGNORECASE)
 
         # 1. Load signatures
-        signatures = SignatureRegistry.load()
+        try:
+            signatures = SignatureRegistry.load()
+        except Exception as exc:
+            signatures = []
+            warnings.append("Built-in technology signatures could not be loaded; detection is incomplete")
+            logger.warning("Signature loading failed: %s", exc)
         execution_metrics: List[SignatureExecutionMetrics] = []
         detected_fingerprints: List[TechnologyFingerprint] = []
         
@@ -133,6 +116,7 @@ class WebsiteFingerprintAnalyzer:
             try:
                 raw_evidence = signature.match(response_headers, body, cookies, script_srcs)
             except Exception:
+                warnings.append(f"Technology signature {signature.signature_id} failed; detection is incomplete")
                 raw_evidence = []
             t1 = time.perf_counter()
             execution_time_ms = (t1 - t0) * 1000.0
@@ -221,21 +205,23 @@ class WebsiteFingerprintAnalyzer:
                 dfp.confidence_band = get_confidence_band(dfp.confidence)
                 detected_fingerprints.append(dfp)
         except Exception as e:
+            warnings.append("Declarative technology detection failed; website evidence may be incomplete")
             logger.warning("Declarative web signature engine execution failed: %s", e)
 
         # 2.6 Favicon Fingerprinting (Hash Matching)
         try:
             favicon_url = urljoin(url, "/favicon.ico")
-            with httpx.Client(timeout=3.0, follow_redirects=True) as fav_client:
-                fav_resp = fav_client.get(favicon_url)
-                if fav_resp.status_code == 200 and fav_resp.content:
-                    fav_fp = FaviconFingerprinter.identify(fav_resp.content)
-                    if fav_fp:
-                        fav_cpe = getattr(fav_fp, "cpe", None)
-                        if fav_cpe:
-                            fav_fp.cpe_candidates = [CPECandidate(cpe=fav_cpe, confidence=100)]
-                        fav_fp.confidence_band = get_confidence_band(100)
-                        detected_fingerprints.append(fav_fp)
+            fav_resp = fetch_observation(favicon_url, timeout=3.0, max_bytes=MAX_BODY_SIZE, headers=headers, external_only=ext_only)
+            if fav_resp.status_code == 200 and fav_resp.content:
+                fav_fp = FaviconFingerprinter.identify(fav_resp.content)
+                if fav_fp:
+                    fav_cpe = getattr(fav_fp, "cpe", None)
+                    if fav_cpe:
+                        fav_fp.cpe_candidates = [CPECandidate(cpe=fav_cpe, confidence=100)]
+                    fav_fp.confidence_band = get_confidence_band(100)
+                    detected_fingerprints.append(fav_fp)
+        except WebsiteURLPolicyError as exc:
+            warnings.append(str(exc))
         except Exception:
             pass
 
@@ -245,79 +231,80 @@ class WebsiteFingerprintAnalyzer:
             import hashlib
             probe_path = f"/pulse-probe-{hashlib.md5(url.encode()).hexdigest()[:8]}"
             probe_url = urljoin(url, probe_path)
-            with httpx.Client(timeout=5.0, follow_redirects=False, headers=headers) as probe_client:
-                probe_resp = probe_client.get(probe_url)
-                error_body = probe_resp.text[:50000] if probe_resp.text else ""
-                error_headers = dict(probe_resp.headers)
+            probe_resp = fetch_observation(probe_url, timeout=5.0, max_bytes=50000, headers=headers, follow_redirects=False, external_only=ext_only)
+            error_body = probe_resp.text[:50000] if probe_resp.text else ""
+            error_headers = dict(probe_resp.headers)
 
-                # Check error page headers (some servers expose identity only on error pages)
-                error_server = error_headers.get("Server", "") or error_headers.get("server", "")
-                if error_server and not response_headers.get("Server", ""):
-                    # Server header only appears on error pages -- use it
-                    if "nginx" in error_server.lower():
-                        ver_m = re.search(r'nginx/([0-9.]+)', error_server, re.IGNORECASE)
-                        detected_fingerprints.append(TechnologyFingerprint(
-                            name="nginx", version=ver_m.group(1) if ver_m else None,
-                            category="Server", confidence=90,
-                            confidence_band=get_confidence_band(90),
-                            evidence_count=1, evidence=[DetectionEvidence(
-                                method=DetectionMethod.HEADER, source="Server (404)",
-                                value=error_server, confidence=90,
-                                description="Server header revealed on error page",
-                                reliability=EvidenceReliability.HIGH
-                            )]
-                        ))
-                    elif "apache" in error_server.lower():
-                        ver_m = re.search(r'Apache/([0-9.]+)', error_server, re.IGNORECASE)
-                        detected_fingerprints.append(TechnologyFingerprint(
-                            name="Apache HTTP Server", version=ver_m.group(1) if ver_m else None,
-                            category="Server", confidence=90,
-                            confidence_band=get_confidence_band(90),
-                            evidence_count=1, evidence=[DetectionEvidence(
-                                method=DetectionMethod.HEADER, source="Server (404)",
-                                value=error_server, confidence=90,
-                                description="Server header revealed on error page",
-                                reliability=EvidenceReliability.HIGH
-                            )]
-                        ))
+            # Check error page headers (some servers expose identity only on error pages)
+            error_server = error_headers.get("Server", "") or error_headers.get("server", "")
+            if error_server and not response_headers.get("Server", ""):
+                # Server header only appears on error pages -- use it
+                if "nginx" in error_server.lower():
+                    ver_m = re.search(r'nginx/([0-9.]+)', error_server, re.IGNORECASE)
+                    detected_fingerprints.append(TechnologyFingerprint(
+                        name="nginx", version=ver_m.group(1) if ver_m else None,
+                        category="Server", confidence=90,
+                        confidence_band=get_confidence_band(90),
+                        evidence_count=1, evidence=[DetectionEvidence(
+                            method=DetectionMethod.HEADER, source="Server (404)",
+                            value=error_server, confidence=90,
+                            description="Server header revealed on error page",
+                            reliability=EvidenceReliability.HIGH
+                        )]
+                    ))
+                elif "apache" in error_server.lower():
+                    ver_m = re.search(r'Apache/([0-9.]+)', error_server, re.IGNORECASE)
+                    detected_fingerprints.append(TechnologyFingerprint(
+                        name="Apache HTTP Server", version=ver_m.group(1) if ver_m else None,
+                        category="Server", confidence=90,
+                        confidence_band=get_confidence_band(90),
+                        evidence_count=1, evidence=[DetectionEvidence(
+                            method=DetectionMethod.HEADER, source="Server (404)",
+                            value=error_server, confidence=90,
+                            description="Server header revealed on error page",
+                            reliability=EvidenceReliability.HIGH
+                        )]
+                    ))
 
-                # Check error page body content
-                _ERROR_PAGE_PATTERNS = [
-                    (r'<address>Apache/([0-9.]+)', "Apache HTTP Server", 95),
-                    (r'<center>nginx/([0-9.]+)</center>', "nginx", 95),
-                    (r'<center>nginx</center>', "nginx", 85),
-                    (r'Microsoft-IIS/([0-9.]+)', "Microsoft IIS", 95),
-                    (r'<h1>It works!</h1>', "Apache HTTP Server", 60),
-                    (r'Cannot GET /', "Express.js", 75),
-                    (r'Whitelabel Error Page', "Spring Boot", 90),
-                    (r'<title>Problem loading page</title>', "Firefox Error", 50),
-                    (r'<h1 class="text-muted">Page not found</h1>', "Django", 80),
-                    (r'The page you were looking for doesn.*t exist', "Ruby on Rails", 70),
-                    (r'<p class="headline">The page you were looking for', "Ruby on Rails", 75),
-                    (r'Powered by.*<a href="https?://expressjs\.com', "Express.js", 90),
-                    (r'Apache Tomcat/([0-9.]+)', "Apache Tomcat", 95),
-                    (r'<h3>Apache Tomcat', "Apache Tomcat", 90),
-                    (r'<title>404 Not Found</title>.*openresty', "OpenResty", 90),
-                    (r'openresty/([0-9.]+)', "OpenResty", 95),
-                    (r'<address>LiteSpeed</address>', "LiteSpeed", 90),
-                    (r'litespeed', "LiteSpeed", 70),
-                    (r'Caddy', "Caddy", 65),
-                ]
-                for pattern, tech_name, conf in _ERROR_PAGE_PATTERNS:
-                    m = re.search(pattern, error_body, re.IGNORECASE | re.DOTALL)
-                    if m:
-                        ver = m.group(1) if m.lastindex and m.lastindex >= 1 else None
-                        detected_fingerprints.append(TechnologyFingerprint(
-                            name=tech_name, version=ver,
-                            category="Server", confidence=conf,
-                            confidence_band=get_confidence_band(conf),
-                            evidence_count=1, evidence=[DetectionEvidence(
-                                method=DetectionMethod.HTML, source="Error Page Body",
-                                value=m.group(0)[:150], confidence=conf,
-                                description=f"Technology signature found on 404 error page",
-                                reliability=EvidenceReliability.MEDIUM
-                            )]
-                        ))
+            # Check error page body content
+            _ERROR_PAGE_PATTERNS = [
+                (r'<address>Apache/([0-9.]+)', "Apache HTTP Server", 95),
+                (r'<center>nginx/([0-9.]+)</center>', "nginx", 95),
+                (r'<center>nginx</center>', "nginx", 85),
+                (r'Microsoft-IIS/([0-9.]+)', "Microsoft IIS", 95),
+                (r'<h1>It works!</h1>', "Apache HTTP Server", 60),
+                (r'Cannot GET /', "Express.js", 75),
+                (r'Whitelabel Error Page', "Spring Boot", 90),
+                (r'<title>Problem loading page</title>', "Firefox Error", 50),
+                (r'<h1 class="text-muted">Page not found</h1>', "Django", 80),
+                (r'The page you were looking for doesn.*t exist', "Ruby on Rails", 70),
+                (r'<p class="headline">The page you were looking for', "Ruby on Rails", 75),
+                (r'Powered by.*<a href="https?://expressjs\.com', "Express.js", 90),
+                (r'Apache Tomcat/([0-9.]+)', "Apache Tomcat", 95),
+                (r'<h3>Apache Tomcat', "Apache Tomcat", 90),
+                (r'<title>404 Not Found</title>.*openresty', "OpenResty", 90),
+                (r'openresty/([0-9.]+)', "OpenResty", 95),
+                (r'<address>LiteSpeed</address>', "LiteSpeed", 90),
+                (r'litespeed', "LiteSpeed", 70),
+                (r'Caddy', "Caddy", 65),
+            ]
+            for pattern, tech_name, conf in _ERROR_PAGE_PATTERNS:
+                m = re.search(pattern, error_body, re.IGNORECASE | re.DOTALL)
+                if m:
+                    ver = m.group(1) if m.lastindex and m.lastindex >= 1 else None
+                    detected_fingerprints.append(TechnologyFingerprint(
+                        name=tech_name, version=ver,
+                        category="Server", confidence=conf,
+                        confidence_band=get_confidence_band(conf),
+                        evidence_count=1, evidence=[DetectionEvidence(
+                            method=DetectionMethod.HTML, source="Error Page Body",
+                            value=m.group(0)[:150], confidence=conf,
+                            description=f"Technology signature found on 404 error page",
+                            reliability=EvidenceReliability.MEDIUM
+                        )]
+                    ))
+        except WebsiteURLPolicyError as exc:
+            warnings.append(str(exc))
         except Exception:
             pass
 
@@ -325,49 +312,50 @@ class WebsiteFingerprintAnalyzer:
         # Detects CMS and platform technologies from robots.txt directives
         try:
             robots_url = urljoin(url, "/robots.txt")
-            with httpx.Client(timeout=3.0, follow_redirects=True) as robots_client:
-                robots_resp = robots_client.get(robots_url)
-                if robots_resp.status_code == 200 and robots_resp.text:
-                    robots_text = robots_resp.text[:20000]  # Limit to 20KB
+            robots_resp = fetch_observation(robots_url, timeout=3.0, max_bytes=20000, headers=headers, external_only=ext_only)
+            if robots_resp.status_code == 200 and robots_resp.text:
+                robots_text = robots_resp.text[:20000]  # Limit to 20KB
 
-                    _ROBOTS_PATTERNS = [
-                        (r'Disallow:\s*/wp-admin', "WordPress", 95),
-                        (r'Disallow:\s*/wp-includes', "WordPress", 95),
-                        (r'Sitemap:.*sitemap_index\.xml', "WordPress", 80),
-                        (r'Disallow:\s*/administrator/', "Joomla", 90),
-                        (r'Disallow:\s*/component/', "Joomla", 75),
-                        (r'Disallow:\s*/admin/', "Admin Panel", 50),
-                        (r'Disallow:\s*/core/', "Drupal", 70),
-                        (r'Disallow:\s*/node/', "Drupal", 65),
-                        (r'Disallow:\s*/user/', "Drupal", 60),
-                        (r'Disallow:\s*/profiles/', "Drupal", 80),
-                        (r'Disallow:\s*/includes/', "Drupal", 60),
-                        (r'Sitemap:.*sitemap\.xml', "XML Sitemap", 70),
-                        (r'Disallow:\s*/ghost/', "Ghost", 85),
-                        (r'Disallow:\s*/typo3/', "TYPO3", 90),
-                        (r'Disallow:\s*/umbraco/', "Umbraco", 90),
-                        (r'Disallow:\s*/sitecore/', "Sitecore", 90),
-                        (r'Disallow:\s*/kentico/', "Kentico", 90),
-                        (r'Disallow:\s*/magento/', "Magento", 90),
-                        (r'Disallow:\s*/checkout/', "E-commerce Platform", 50),
-                        (r'Disallow:\s*/cart/', "E-commerce Platform", 50),
-                        (r'Disallow:\s*/_next/', "Next.js", 85),
-                    ]
-                    for pattern, tech_name, conf in _ROBOTS_PATTERNS:
-                        m = re.search(pattern, robots_text, re.IGNORECASE)
-                        if m:
-                            detected_fingerprints.append(TechnologyFingerprint(
-                                name=tech_name, version=None,
-                                category="CMS" if tech_name not in ("Next.js", "Admin Panel", "E-commerce Platform", "XML Sitemap") else "Web Technology",
-                                confidence=conf,
-                                confidence_band=get_confidence_band(conf),
-                                evidence_count=1, evidence=[DetectionEvidence(
-                                    method=DetectionMethod.HTML, source="robots.txt",
-                                    value=m.group(0).strip()[:100], confidence=conf,
-                                    description=f"Technology indicator found in robots.txt",
-                                    reliability=EvidenceReliability.MEDIUM
-                                )]
-                            ))
+                _ROBOTS_PATTERNS = [
+                    (r'Disallow:\s*/wp-admin', "WordPress", 95),
+                    (r'Disallow:\s*/wp-includes', "WordPress", 95),
+                    (r'Sitemap:.*sitemap_index\.xml', "WordPress", 80),
+                    (r'Disallow:\s*/administrator/', "Joomla", 90),
+                    (r'Disallow:\s*/component/', "Joomla", 75),
+                    (r'Disallow:\s*/admin/', "Admin Panel", 50),
+                    (r'Disallow:\s*/core/', "Drupal", 70),
+                    (r'Disallow:\s*/node/', "Drupal", 65),
+                    (r'Disallow:\s*/user/', "Drupal", 60),
+                    (r'Disallow:\s*/profiles/', "Drupal", 80),
+                    (r'Disallow:\s*/includes/', "Drupal", 60),
+                    (r'Sitemap:.*sitemap\.xml', "XML Sitemap", 70),
+                    (r'Disallow:\s*/ghost/', "Ghost", 85),
+                    (r'Disallow:\s*/typo3/', "TYPO3", 90),
+                    (r'Disallow:\s*/umbraco/', "Umbraco", 90),
+                    (r'Disallow:\s*/sitecore/', "Sitecore", 90),
+                    (r'Disallow:\s*/kentico/', "Kentico", 90),
+                    (r'Disallow:\s*/magento/', "Magento", 90),
+                    (r'Disallow:\s*/checkout/', "E-commerce Platform", 50),
+                    (r'Disallow:\s*/cart/', "E-commerce Platform", 50),
+                    (r'Disallow:\s*/_next/', "Next.js", 85),
+                ]
+                for pattern, tech_name, conf in _ROBOTS_PATTERNS:
+                    m = re.search(pattern, robots_text, re.IGNORECASE)
+                    if m:
+                        detected_fingerprints.append(TechnologyFingerprint(
+                            name=tech_name, version=None,
+                            category="CMS" if tech_name not in ("Next.js", "Admin Panel", "E-commerce Platform", "XML Sitemap") else "Web Technology",
+                            confidence=conf,
+                            confidence_band=get_confidence_band(conf),
+                            evidence_count=1, evidence=[DetectionEvidence(
+                                method=DetectionMethod.HTML, source="robots.txt",
+                                value=m.group(0).strip()[:100], confidence=conf,
+                                description=f"Technology indicator found in robots.txt",
+                                reliability=EvidenceReliability.MEDIUM
+                            )]
+                        ))
+        except WebsiteURLPolicyError as exc:
+            warnings.append(str(exc))
         except Exception:
             pass
 
@@ -413,7 +401,10 @@ class WebsiteFingerprintAnalyzer:
             url=url,
             technologies=final_techs,
             security_headers=self.security_headers,
-            statistics=stats
+            statistics=stats,
+            status="PARTIAL" if warnings else "OK",
+            status_code=response.status_code,
+            warnings=warnings
         )
 
     def _deduplicate_evidence(self, evidence: List[DetectionEvidence]) -> List[DetectionEvidence]:
@@ -477,6 +468,7 @@ class WebsiteFingerprintAnalyzer:
                 dfs(fp.name, 1)
 
     def _assess_security_headers(self, headers: dict):
+        headers = httpx.Headers(headers)
         checks = [
             ("Content-Security-Policy", "Missing"),
             ("Strict-Transport-Security", "Missing"),
@@ -488,16 +480,36 @@ class WebsiteFingerprintAnalyzer:
             ("Cross-Origin-Resource-Policy", "Missing")
         ]
         
+        guidance = {
+            "Content-Security-Policy": "Define allowed content sources; test a policy for this application.",
+            "Strict-Transport-Security": "For HTTPS sites, configure a positive max-age after verifying HTTPS coverage.",
+            "X-Frame-Options": "Review framing protection with DENY, SAMEORIGIN, or CSP frame-ancestors.",
+            "Referrer-Policy": "Choose a policy that limits referrer information sent to other origins.",
+            "Permissions-Policy": "Restrict browser features that this application does not need.",
+            "X-Content-Type-Options": "Set nosniff to prevent MIME type guessing.",
+            "Cross-Origin-Opener-Policy": "Review cross-origin window isolation for this application's integrations.",
+            "Cross-Origin-Resource-Policy": "Review which origins should be allowed to load these resources.",
+        }
         for header, default_status in checks:
             value = headers.get(header)
             if value:
                 status = "Present"
                 if header == "Content-Security-Policy" and "unsafe-inline" in value:
                     status = "Weak"
+                if header == "X-Content-Type-Options" and value.strip().lower() != "nosniff":
+                    status = "Misconfigured"
+                if header == "X-Frame-Options" and value.strip().upper() not in ("DENY", "SAMEORIGIN"):
+                    status = "Misconfigured"
+                if header == "Strict-Transport-Security":
+                    max_age = re.search(r"(?:^|;)\s*max-age\s*=\s*([0-9]+)\s*(?:;|$)", value, re.IGNORECASE)
+                    if not max_age or not max_age.group(1).strip("0"):
+                        status = "Weak"
                 details = value[:100] + "..." if len(value) > 100 else value
+                if status != "Present":
+                    details += " — " + guidance[header]
             else:
                 status = default_status
-                details = "Header is not set."
+                details = "Header is not set. " + guidance[header]
                 
             self.security_headers.append(SecurityHeaderStatus(
                 header_name=header,
@@ -525,7 +537,8 @@ class WebsiteFingerprintAnalyzer:
             "react": "React",
             "reactjs": "React",
             "angular": "Angular",
-            "angularjs": "Angular",
+            "angularjs": "AngularJS",
+            "angular.js": "AngularJS",
             "jquery": "jQuery",
             "jquery-migrate": "jQuery Migrate",
             "jquery migrate": "jQuery Migrate",

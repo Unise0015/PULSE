@@ -1,36 +1,33 @@
-# System Architecture Blueprint
+# Scan architecture
 
-PULSE is a highly decoupled, state-driven vulnerability intelligence engine. This document serves as the absolute technical reference for its architectural execution.
+## Entry points and orchestration
 
----
+`pulse.cli` collects input and calls `ScannerOrchestrator`. The orchestrator delegates project discovery to `ScanService`, selected packages to `PackageService`, and website assessment to `WebsiteService`. File parsing feeds selected packages into `run_targeted_scan`.
 
-## 1. Core Data Models (`pulse.domain.models`)
-All inter-layer communication uses strictly typed Python Dataclasses.
+`EnrichmentPipeline.run` executes registry, vulnerability, scoring, and recommendation stages. Its result carries findings, attack paths, packages, metrics, and warnings. Failed stages preserve prior findings and add a warning. Intelligence lookup failures must remain distinct from successful empty results; failed OSV batches are never stored as clean cache entries.
 
-- **`PackageInfo`**: The canonical representation of a discovered dependency.
-  - Fields: `name` (str), `version` (str), `ecosystem` (enum), `source_file` (str).
-- **`VulnerabilityFinding`**: The unified threat object returned from intel pipelines.
-  - Fields: `cve_id`, `cvss_score`, `epss_score`, `kev_match`, `risk_heat_score`, `attack_techniques`.
-- **`ScanResult`**: The final output container.
-  - Fields: `target_name`, `timestamp`, `findings` (List[VulnerabilityFinding]), `attack_paths` (List[AttackPath]).
+## Completion evidence
 
----
+`ScanResult.warnings` carries execution warnings. `ScanResult.assessment_warnings` combines them with discovery diagnostics, skipped packages, and website correlation state. Terminal summaries, report construction, and history all consume this evidence.
 
-## 2. Global State Management (`pulse.state.AppState`)
-PULSE maintains a singleton state module to control execution flags globally without prop-drilling.
-- `AppState.SYSTEM_SCAN` (bool): If True, instructs the orchestrator to prioritize OS/Kernel discovery.
-- `AppState.OFFLINE_MODE` (bool): Hard-blocks any network requests in `OSVProvider` and `NVDCPEProvider`, forcing cache-only reads.
-- `AppState.LAST_SCAN`: Stores the final `ScanResult` object for immediate memory access by the Reporting Engine.
+An incomplete scan can still contain useful findings. Its empty result cannot establish a clean assessment, its score is partial, and it cannot establish remediation against a previous scan. History stores warnings in `scan_runs.warnings_json` and website completion state in `website_state_json`; older records with no coverage evidence are displayed as unknown rather than verified.
 
----
+Website correlation also retains `Partial` and `Failed` states. An eligible technology with incomplete checks is not labelled as having no known vulnerabilities.
 
-## 3. The Execution Flow (`pulse.scanner.ScannerOrchestrator`)
-The `ScannerOrchestrator` controls the sequence of a scan. The exact call stack for a file scan:
+## Website observations and package identity
 
-1. **Discovery Request**: `orchestrator.run_file_scan("requirements.txt")`
-2. **Parsing Routing**: `ParserRegistry.get_parser_for_file()` uses regex against the filename to load `parse_requirements_txt()`.
-3. **AST Translation**: The parser yields raw text blocks into `PackageInfo` models.
-4. **Enrichment Hook**: `EnrichmentPipeline.run_pipeline(packages)` is invoked.
-5. **Data Deduplication**: The pipeline hashes `(name, version, ecosystem)` to drop duplicate packages.
-6. **Threat Scoring**: The `ThreatMapper` injects CVSS and KEV data to calculate the `risk_heat_score`.
-7. **Finalization**: `ReportBuilder` serializes the `ScanResult` into JSON/HTML.
+`website.acquisition.fetch_observation` owns bounded, streamed HTTP reads for the root document, favicon, error probe, and robots.txt. It preserves case-insensitive headers and closes responses at the byte limit. Failed root requests return explicit assessment diagnostics.
+
+The signature registry and declarative rules detect technologies from those observations. AngularJS (`angular` on npm) and modern Angular (`@angular/core`) remain distinct throughout detection, deduplication, and correlation.
+
+`ecosystems.package_identity` owns canonical package aliases. A technology display name can have a different meaning from a literal registry package name: the detected technology `Angular` denotes modern Angular; the literal npm package `angular` denotes AngularJS.
+
+## Reports and storage
+
+`ReportBuilder` converts a `ScanResult` into a shared report model for JSON, HTML, Markdown, and text. Reports carry completion evidence alongside findings. HTML rendering escapes untrusted values and accepts only HTTP(S) finding links. Templates and signature data are packaged with the distribution.
+
+`HistoryService` uses SQLite for scan metadata, findings, and inventories. `ReportService` records scans and optionally writes reports using the configured format and location.
+
+## Verification
+
+See [testing.md](testing.md) for the tracked regression suite and CI checks. Tests use synthetic provider responses and isolated history databases.

@@ -13,11 +13,11 @@
     "cpe": "cpe:2.3:a:vuejs:vue:*:*:*:*:*:*:*:*",
     "scriptSrc": ["vue(?:[.-](\\d+(?:\\.\\d+)+))?(?:\\.min)?\\.js\\;version:\\1"]
   },
-  "Angular": {
+  "AngularJS": {
     "domain": "frontend",
     "vendor": "Google",
     "cats": ["JavaScript Framework"],
-    "cpe": "cpe:2.3:a:angular:angular:*:*:*:*:*:*:*:*",
+    "cpe": "cpe:2.3:a:angularjs:angular.js:*:*:*:*:*:*:*:*",
     "scriptSrc": ["angular(?:[.-](\\d+(?:\\.\\d+)+))?(?:\\.min)?\\.js\\;version:\\1"]
   },
   "Next.js": {

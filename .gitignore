@@ -13,7 +13,6 @@ __pycache__/
 *.pyd
 
 # Testing, Sample Inputs & Dev Scripts
-tests/
 requirements.txt
 package.json
 run-tests.bat

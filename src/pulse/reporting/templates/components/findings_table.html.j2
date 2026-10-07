@@ -91,6 +91,6 @@
     </table>
   </div>
   {% else %}
-    <div class="empty-banner">✓ No vulnerabilities identified in this scan.</div>
+    <div class="empty-banner">{% if report.executive_summary.assessment_complete %}No known vulnerabilities detected in completed checks.{% else %}No findings returned; incomplete checks cannot establish a clean result.{% endif %}</div>
   {% endif %}
 </div>

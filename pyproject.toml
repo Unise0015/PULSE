@@ -15,7 +15,8 @@ authors = [
 dependencies = [
     "rich>=13.0.0",
     "questionary>=2.0.0",
-    "httpx>=0.24.0",
+    "httpx>=0.28,<0.29",
+    "httpcore>=1.0.9,<2",
     "reportlab>=4.0.0",
     "jinja2>=3.1.0",
     "packaging>=23.0",
@@ -34,8 +35,7 @@ pulse = "pulse.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-pulse = ["data/*.json", "data/web_signatures/*.json", "data/technology_signatures/*.json"]
+pulse = ["data/*.json", "data/web_signatures/*.json", "data/technology_signatures/*.json", "reporting/templates/*.j2", "reporting/templates/components/*.j2"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
-

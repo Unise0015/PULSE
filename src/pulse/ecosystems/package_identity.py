@@ -190,25 +190,14 @@ def resolve_technology_package(
                 source="fingerprint"
             )
 
-    # 2. Local KNOWN_PACKAGE_IDENTITIES
+    # Aliases have one owner. A technology named Angular denotes modern Angular;
+    # the literal npm package "angular" remains AngularJS in package lookups.
+    canonical_name, alias_eco, alias_reg = get_canonical_package_info(norm_name)
     known_eco, known_reg = get_known_identity(norm_name)
+    known_eco, known_reg = alias_eco or known_eco, alias_reg or known_reg
+    if norm_name == "angular":
+        canonical_name = "@angular/core"
     if known_eco:
-        canonical_name = norm_name
-        if norm_name in ("angular", "angular.js"):
-            canonical_name = "@angular/core"
-        elif norm_name in ("tailwind",):
-            canonical_name = "tailwindcss"
-        elif norm_name in ("next.js",):
-            canonical_name = "next"
-        elif norm_name in ("nuxt.js",):
-            canonical_name = "nuxt"
-        elif norm_name in ("laravel",):
-            canonical_name = "laravel/framework"
-        elif norm_name in ("spring",):
-            canonical_name = "spring-core"
-        elif norm_name in ("rubyonrails",):
-            canonical_name = "rails"
-
         return PackageIdentity(
             name=canonical_name,
             version=clean_version,
