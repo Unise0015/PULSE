@@ -360,8 +360,10 @@ def website_assessment_menu():
     if not url:
         return
         
-    if not url.startswith("http"):
-        url = "https://" + url
+    from pulse.website.acquisition import normalize_website_url
+    url = normalize_website_url(url)
+    if not url:
+        return
         
     orchestrator = ScannerOrchestrator()
     scan_result = orchestrator.run_website_scan(console, url)
@@ -373,45 +375,39 @@ def website_assessment_menu():
 
 def website_post_scan_menu(scan: ScanResult):
     from pulse.domain.models import CorrelationStatus
+    from pulse.website.presentation import can_correlate
     while True:
-        is_correlated = False
-        if scan.website_assessment:
-            is_correlated = scan.website_assessment.correlation_status in (CorrelationStatus.COMPLETED, CorrelationStatus.PARTIAL)
-            
-        options = []
-        if is_correlated:
-            options.append("Correlate Technologies ✓")
-        else:
-            options.append("Correlate Technologies")
-            
-        options.append("Technologies")
-        options.append("Security")
-        
-        if is_correlated:
-            options.append("Vulnerabilities")
-            options.append("Attack Paths")
-            
-        options.append("Export Report")
-        options.append("Back to Main Menu")
-        
-        choice = questionary.select("\nPost-Scan Actions:", choices=options).ask()
-        
+        wa = scan.website_assessment
+        correlation_action = None
+        options = ["Assessment Summary", "Technologies", "Security"]
+        if can_correlate(scan):
+            correlation_action = (
+                "Correlate Technologies" if wa.correlation_status == CorrelationStatus.NOT_RUN
+                else "Retry Correlation" if wa.correlation_status in (CorrelationStatus.PARTIAL, CorrelationStatus.FAILED)
+                else "Run Correlation Again"
+            )
+            options.insert(0, correlation_action)
+        if scan.findings:
+            options.extend(["Vulnerabilities", "Attack Paths"])
+        options.extend(["Export Report", "Back to Main Menu"])
+        choice = questionary.select("\nWebsite Assessment Actions:", choices=options).ask()
         if choice == "Back to Main Menu" or not choice:
             break
+        if choice == correlation_action:
+            ScannerOrchestrator().analyze_website_technologies(console, scan)
+            print_website_assessment_summary(console, scan)
+        elif choice == "Assessment Summary":
+            print_website_assessment_summary(console, scan)
         elif choice == "Technologies":
             print_technologies_view(console, scan)
         elif choice == "Security":
             print_security_headers_view(console, scan)
-        elif choice in ("Correlate Technologies", "Correlate Technologies ✓"):
-            orchestrator = ScannerOrchestrator()
-            orchestrator.analyze_website_technologies(console, scan)
-            print_website_assessment_summary(console, scan)
         elif choice == "Vulnerabilities":
             print_findings_table(console, scan.findings)
         elif choice == "Attack Paths":
             print_top_attack_paths(console, scan)
         elif choice == "Export Report":
-            export_last_scan_menu()
+            export_workflow(scan)
 
 def post_scan_menu(scan: ScanResult):
     while True:

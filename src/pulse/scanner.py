@@ -39,18 +39,7 @@ class ScannerOrchestrator:
         history = HistoryService()
         scan = history.get_scan_by_id(scan_id)
         if scan:
-            if scan.target_type == "website" and getattr(scan, "website_assessment", None):
-                scan._reconstructing = True
-                from pulse.services.website_service import WebsiteService
-                class DummyConsole:
-                    def print(self, *args, **kwargs):
-                        pass
-                try:
-                    ws = WebsiteService()
-                    ws.analyze_technologies(DummyConsole(), scan)
-                except Exception as e:
-                    import logging
-                    logging.getLogger(__name__).error(f"Failed to resolve historical website findings: {e}")
+            # History is a recorded observation; refreshing intelligence is an explicit action.
             mapper = ThreatMapper()
             mapper.enrich_findings(scan.findings)
         return scan

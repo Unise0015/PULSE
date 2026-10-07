@@ -71,6 +71,7 @@ class WebsiteTechnologyModel:
     vulnerability_count: int
     correlation_status: str = "Detection Only"
     intelligence_sources: List[str] = field(default_factory=list)
+    correlation_reason: str = ""
 
 @dataclass
 class PackageInventoryItem:
@@ -96,6 +97,10 @@ class WebsiteAssessmentSection(BaseSection):
     url: str
     correlation_status: str
     technologies: List[WebsiteTechnologyModel] = field(default_factory=list)
+    acquisition_status: str = "OK"
+    http_status: int = 0
+    next_step: str = ""
+    security_headers: List[Any] = field(default_factory=list)
 
 @dataclass
 class DependencyInventorySection(BaseSection):

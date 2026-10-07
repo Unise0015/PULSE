@@ -132,45 +132,27 @@ class ReportBuilder:
         # 4. Sections
         sections: List[BaseSection] = []
 
-        # Section: Website Assessment (if applicable)
+        # Rendering uses recorded evidence only; it must not contact providers.
         if scan.website_assessment:
-            from pulse.website.capability import CorrelationEligibilityStatus, evaluate_correlation_eligibility
-            eligibilities = getattr(scan.website_assessment, 'technology_eligibilities', {})
-            
-            tech_models = []
-            for t in scan.website_assessment.technologies:
-                vuln_cnt = sum(1 for f in finding_models if f.package_name == t.name)
-                
-                # Use stored eligibility (Single Source of Truth)
-                tech_id = getattr(t, "signature_id", "") or t.name.lower()
-                elig = eligibilities.get(tech_id)
-                if not elig:
-                    elig = evaluate_correlation_eligibility(t)
-                is_correlated = elig.status in (
-                    CorrelationEligibilityStatus.CORRELATABLE,
-                    CorrelationEligibilityStatus.PARTIALLY_CORRELATABLE,
-                )
-                
-                tech_models.append(
-                    WebsiteTechnologyModel(
-                        name=t.name,
-                        version=t.version,
-                        category=t.category or "Technology",
-                        confidence=t.confidence,
-                        correlated=is_correlated,
-                        vulnerability_count=vuln_cnt,
-                        correlation_status=elig.status.value,
-                        intelligence_sources=elig.intelligence_sources,
-                    )
-                )
-            sections.append(
-                WebsiteAssessmentSection(
-                    name="Website Assessment",
-                    url=scan.website_assessment.url,
-                    correlation_status=scan.website_assessment.correlation_status.value if hasattr(scan.website_assessment.correlation_status, "value") else str(scan.website_assessment.correlation_status),
-                    technologies=tech_models
-                )
-            )
+            from pulse.website.presentation import technology_views, next_step, value
+            wa = scan.website_assessment
+            tech_models = [WebsiteTechnologyModel(
+                name=row.technology.name,
+                version=row.technology.version,
+                category=value(row.technology.category),
+                confidence=row.technology.confidence,
+                correlated=row.checked,
+                vulnerability_count=len(row.findings),
+                correlation_status=row.label,
+                correlation_reason=row.reason,
+            ) for row in technology_views(scan)]
+            sections.append(WebsiteAssessmentSection(
+                name="Website Assessment", url=wa.url,
+                correlation_status=value(wa.correlation_status),
+                technologies=tech_models, acquisition_status=wa.status,
+                http_status=wa.status_code, next_step=next_step(scan),
+                security_headers=list(wa.security_headers),
+            ))
 
         # Section: Dependency Inventory
         inventory_items = []

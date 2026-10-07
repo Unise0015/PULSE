@@ -382,6 +382,7 @@ class WebsiteAssessment:
     status: str = "OK"
     status_code: int = 200
     warnings: List[str] = field(default_factory=list)
+    correlation_warnings: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -419,6 +420,13 @@ class ScanResult:
             warnings.append(f"{len(self.unsupported_packages)} packages were unsupported and skipped")
         if self.website_assessment:
             warnings.extend(self.website_assessment.warnings)
+            warnings.extend(self.website_assessment.correlation_warnings)
+            if self.website_assessment.correlation_status == CorrelationStatus.COMPLETED:
+                recorded = {name.casefold() for name in self.website_assessment.technology_correlation_results}
+                missing = sum(t.name.casefold() not in recorded
+                              for t in self.website_assessment.technologies)
+                if missing:
+                    warnings.append(f"{missing} website technologies have no recorded vulnerability result")
             if self.website_assessment.correlation_status != CorrelationStatus.COMPLETED:
                 warnings.append(f"Website vulnerability correlation: {self.website_assessment.correlation_status.value}")
             if not self.website_assessment.correlated_technologies:

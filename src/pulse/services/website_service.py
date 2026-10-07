@@ -47,6 +47,7 @@ class WebsiteService:
             SpinnerColumn(spinner_name="line"),
             TextColumn("[progress.description]{task.description}"),
             transient=True,
+            console=console,
         ) as progress:
             task = progress.add_task("[yellow]Detecting website technologies...[/yellow]", total=None)
             assessment = analyzer.scan(url)
@@ -69,6 +70,33 @@ class WebsiteService:
         return scan_result
 
     def analyze_technologies(self, console, scan: ScanResult) -> ScanResult:
+        from pulse.website.presentation import can_correlate, next_step
+        if not can_correlate(scan):
+            console.print(next_step(scan), markup=False)
+            return scan
+        try:
+            return self._analyze_technologies(console, scan)
+        except Exception:
+            logger.exception("Website vulnerability correlation failed")
+            assessment = scan.website_assessment
+            assessment.correlation_status = CorrelationStatus.FAILED
+            assessment.correlation_completed_at = None
+            assessment.technology_eligibilities = {}
+            assessment.technology_correlation_results = {}
+            assessment.correlated_technologies = 0
+            assessment.failed_technologies = len(assessment.technologies)
+            scan.findings = []
+            scan.attack_paths = []
+            scan.packages_scanned = 0
+            scan.attack_surface_score = 0
+            scan.upgrade_recommendations = {}
+            scan.target_fingerprint = ""
+            warning = "Website correlation failed. Review connection settings and retry; no current results are available."
+            assessment.correlation_warnings = [warning]
+            console.print(warning, markup=False, style="yellow")
+            return scan
+
+    def _analyze_technologies(self, console, scan: ScanResult) -> ScanResult:
         """
         Canonical website technology vulnerability correlation flow.
         
@@ -118,18 +146,18 @@ class WebsiteService:
         if eligible_labels:
             console.print("[bold green]Eligible for Vulnerability Correlation:[/bold green]")
             for item in eligible_labels:
-                console.print(f"  {item}")
+                console.print(f"  {item}", markup=False)
         if skipped_labels:
             console.print("\n[dim]Skipped / Non-Correlatable:[/dim]")
             for item in skipped_labels:
-                console.print(f"  {item}")
+                console.print(f"  {item}", markup=False)
         console.print()
 
         # 5. Correlate packages via shared EnrichmentPipeline ONCE
         all_findings, attack_paths, cpe_findings, warnings = self._correlate_packages(
             unique_packages, normalized, eligibilities, console
         )
-        scan.warnings = list(dict.fromkeys(scan.warnings + warnings))
+        scan.website_assessment.correlation_warnings = list(dict.fromkeys(warnings))
 
         # 6. Map findings back to each technology
         tech_findings_map = self._map_findings_to_technologies(
@@ -274,6 +302,7 @@ class WebsiteService:
             SpinnerColumn(spinner_name="line"),
             TextColumn("[progress.description]{task.description}"),
             transient=False,
+            console=console,
         ) as progress:
             # 1. Execute Shared EnrichmentPipeline for canonical packages
             if unique_packages:

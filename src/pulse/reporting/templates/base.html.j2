@@ -33,6 +33,14 @@
     a:hover { text-decoration: underline; }
     .container { max-width: 1280px; margin: 0 auto; }
     
+    .website-section { overflow-wrap: anywhere; }
+    .website-section h3 { margin: 24px 0 12px; color: var(--text-white); }
+    .website-section .card-grid { margin-top: 20px; }
+    .website-section .next-step { padding: 14px 18px; border-left: 3px solid var(--accent-blue); background: var(--card-bg); margin: 18px 0; }
+    .website-section details { margin-top: 8px; }
+    .website-section summary { cursor: pointer; color: var(--accent-blue); }
+    .website-section .data-table { min-width: 640px; overflow-wrap: normal; }
+    .website-section .table-wrapper:focus-visible { outline: 2px solid var(--accent-blue); }
     /* Posture Banner */
     .posture-banner {
       background: linear-gradient(135deg, #161b22 0%, #1f242d 100%);
@@ -306,6 +314,17 @@
     .seg-direct { background: var(--accent-blue); }
     .seg-transitive { background: var(--accent-purple); }
     .supply-legend { display: flex; flex-direction: column; gap: 6px; font-size: 0.85rem; }
+    @media (max-width: 640px) {
+      body { padding: 12px; overflow-wrap: anywhere; }
+      .section-container { padding: 16px; min-width: 0; }
+      .posture-banner { flex-direction: column; align-items: flex-start; gap: 20px; padding: 20px; }
+      .posture-right { text-align: left; }
+      .card-grid, .charts-grid { grid-template-columns: minmax(0, 1fr); }
+      .search-input { min-width: 0; width: 100%; }
+      .filter-controls { min-width: 0; width: 100%; }
+      .cmd-row { flex-wrap: wrap; gap: 12px; }
+    }
+
   </style>
 </head>
 <body>
@@ -318,10 +337,10 @@
     {% endif %}
     {% include 'components/posture_header.html.j2' %}
     {% include 'components/executive_summary.html.j2' %}
+    {% include 'components/website_inventory.html.j2' %}
     {% include 'components/risk_cards.html.j2' %}
     {% include 'components/charts.html.j2' %}
     {% include 'components/findings_table.html.j2' %}
-    {% include 'components/website_inventory.html.j2' %}
     {% include 'components/package_inventory.html.j2' %}
     {% include 'components/remediation.html.j2' %}
     {% include 'components/metadata.html.j2' %}

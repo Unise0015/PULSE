@@ -12,11 +12,10 @@ from pulse.website.signatures import SignatureRegistry
 from pulse.website.confidence import WeightedMaxBonusCalculator, get_confidence_band
 from pulse.website.declarative_engine import DeclarativeSignatureEngine
 from pulse.website.favicon_fingerprint import FaviconFingerprinter
-from pulse.website.acquisition import fetch_observation
+from pulse.website.acquisition import fetch_observation, validate_url, WebsiteURLPolicyError
 
-import ipaddress
 import logging
-from urllib.parse import urlparse, urljoin
+from urllib.parse import urljoin
 from pulse.config import get_setting
 
 logger = logging.getLogger(__name__)
@@ -34,38 +33,6 @@ def get_declarative_engine() -> DeclarativeSignatureEngine:
     return _DECLARATIVE_ENGINE
 
 
-def validate_url(url: str, external_only: bool = False) -> Tuple[bool, str]:
-    """Pre-request URL validator. Rejects malformed URLs and unsupported protocols."""
-    if not url or not isinstance(url, str) or not url.strip():
-        return False, "Invalid URL: Empty target string provided"
-
-    raw_url = url.strip()
-    try:
-        parsed = urlparse(raw_url)
-        parsed.port  # Validate numeric ports and the legal port range before HTTPX.
-    except Exception as e:
-        return False, f"Invalid URL structure: {e}"
-
-    if not parsed.scheme or parsed.scheme.lower() not in ("http", "https"):
-        return False, f"Invalid URL scheme '{parsed.scheme}'. Only http:// and https:// protocols are supported."
-
-    hostname = parsed.hostname
-    if not hostname:
-        return False, "Invalid URL: Missing hostname or domain"
-
-    if external_only:
-        if hostname.lower() in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
-            return False, f"External-only policy enforced: Target '{hostname}' is localhost/loopback"
-
-        try:
-            ip = ipaddress.ip_address(hostname)
-            if ip.is_private or ip.is_loopback or ip.is_link_local:
-                return False, f"External-only policy enforced: Target '{hostname}' is a private or internal IP"
-        except ValueError:
-            pass
-
-    return True, "URL is valid"
-
 class WebsiteFingerprintAnalyzer:
     """Analyzes web assets passively for technologies and security headers."""
 
@@ -77,6 +44,7 @@ class WebsiteFingerprintAnalyzer:
         self.technologies = []
         self.security_headers = []
         warnings = []
+        url = url.strip() if isinstance(url, str) else url
         from pulse.state import AppState
         if AppState.OFFLINE_MODE:
             return WebsiteAssessment(url=url, status="OFFLINE", status_code=0,
@@ -103,22 +71,37 @@ class WebsiteFingerprintAnalyzer:
         cookies = {}
         
         try:
-            response = fetch_observation(url, timeout=TIMEOUT, max_bytes=MAX_BODY_SIZE, headers=headers)
+            response = fetch_observation(url, timeout=TIMEOUT, max_bytes=MAX_BODY_SIZE, headers=headers, external_only=ext_only)
             response_headers = response.headers
             cookies = dict(response.cookies)
             body = response.text
+            url = str(response.url)
+            if response.extensions.get("pulse_body_limit_reached"):
+                warnings.append("Website response reached the download limit; evidence may be incomplete")
             if response.status_code >= 400:
                 warnings.append(f"Website returned HTTP {response.status_code}; evidence may be incomplete")
+        except WebsiteURLPolicyError as exc:
+            return WebsiteAssessment(url=url, status="INVALID", status_code=0, warnings=[str(exc)])
         except (httpx.HTTPError, httpx.InvalidURL) as exc:
             return WebsiteAssessment(url=url, status="ERROR", status_code=0,
-                                     warnings=[f"Website request failed: {type(exc).__name__}"])
+                                     warnings=[{
+                                         "ConnectError": "Could not connect to the website. Check the hostname, TLS certificate, and network connection.",
+                                         "ConnectTimeout": "Connection timed out. Check the website is reachable and retry.",
+                                         "ReadTimeout": "The website took too long to respond. Retry the scan.",
+                                         "TooManyRedirects": "The website exceeded the redirect limit. Check the URL and redirect configuration.",
+                                     }.get(type(exc).__name__, f"Website request failed ({type(exc).__name__}). Check the URL and retry.")])
             
         script_srcs = []
         if body:
             script_srcs = re.findall(r'<script[^>]+src=["\']([^"\']+)["\']', body, re.IGNORECASE)
 
         # 1. Load signatures
-        signatures = SignatureRegistry.load()
+        try:
+            signatures = SignatureRegistry.load()
+        except Exception as exc:
+            signatures = []
+            warnings.append("Built-in technology signatures could not be loaded; detection is incomplete")
+            logger.warning("Signature loading failed: %s", exc)
         execution_metrics: List[SignatureExecutionMetrics] = []
         detected_fingerprints: List[TechnologyFingerprint] = []
         
@@ -133,6 +116,7 @@ class WebsiteFingerprintAnalyzer:
             try:
                 raw_evidence = signature.match(response_headers, body, cookies, script_srcs)
             except Exception:
+                warnings.append(f"Technology signature {signature.signature_id} failed; detection is incomplete")
                 raw_evidence = []
             t1 = time.perf_counter()
             execution_time_ms = (t1 - t0) * 1000.0
@@ -227,7 +211,7 @@ class WebsiteFingerprintAnalyzer:
         # 2.6 Favicon Fingerprinting (Hash Matching)
         try:
             favicon_url = urljoin(url, "/favicon.ico")
-            fav_resp = fetch_observation(favicon_url, timeout=3.0, max_bytes=MAX_BODY_SIZE, headers=headers)
+            fav_resp = fetch_observation(favicon_url, timeout=3.0, max_bytes=MAX_BODY_SIZE, headers=headers, external_only=ext_only)
             if fav_resp.status_code == 200 and fav_resp.content:
                 fav_fp = FaviconFingerprinter.identify(fav_resp.content)
                 if fav_fp:
@@ -236,6 +220,8 @@ class WebsiteFingerprintAnalyzer:
                         fav_fp.cpe_candidates = [CPECandidate(cpe=fav_cpe, confidence=100)]
                     fav_fp.confidence_band = get_confidence_band(100)
                     detected_fingerprints.append(fav_fp)
+        except WebsiteURLPolicyError as exc:
+            warnings.append(str(exc))
         except Exception:
             pass
 
@@ -245,7 +231,7 @@ class WebsiteFingerprintAnalyzer:
             import hashlib
             probe_path = f"/pulse-probe-{hashlib.md5(url.encode()).hexdigest()[:8]}"
             probe_url = urljoin(url, probe_path)
-            probe_resp = fetch_observation(probe_url, timeout=5.0, max_bytes=50000, headers=headers, follow_redirects=False)
+            probe_resp = fetch_observation(probe_url, timeout=5.0, max_bytes=50000, headers=headers, follow_redirects=False, external_only=ext_only)
             error_body = probe_resp.text[:50000] if probe_resp.text else ""
             error_headers = dict(probe_resp.headers)
 
@@ -317,6 +303,8 @@ class WebsiteFingerprintAnalyzer:
                             reliability=EvidenceReliability.MEDIUM
                         )]
                     ))
+        except WebsiteURLPolicyError as exc:
+            warnings.append(str(exc))
         except Exception:
             pass
 
@@ -324,7 +312,7 @@ class WebsiteFingerprintAnalyzer:
         # Detects CMS and platform technologies from robots.txt directives
         try:
             robots_url = urljoin(url, "/robots.txt")
-            robots_resp = fetch_observation(robots_url, timeout=3.0, max_bytes=20000, headers=headers)
+            robots_resp = fetch_observation(robots_url, timeout=3.0, max_bytes=20000, headers=headers, external_only=ext_only)
             if robots_resp.status_code == 200 and robots_resp.text:
                 robots_text = robots_resp.text[:20000]  # Limit to 20KB
 
@@ -366,6 +354,8 @@ class WebsiteFingerprintAnalyzer:
                                 reliability=EvidenceReliability.MEDIUM
                             )]
                         ))
+        except WebsiteURLPolicyError as exc:
+            warnings.append(str(exc))
         except Exception:
             pass
 
@@ -490,16 +480,36 @@ class WebsiteFingerprintAnalyzer:
             ("Cross-Origin-Resource-Policy", "Missing")
         ]
         
+        guidance = {
+            "Content-Security-Policy": "Define allowed content sources; test a policy for this application.",
+            "Strict-Transport-Security": "For HTTPS sites, configure a positive max-age after verifying HTTPS coverage.",
+            "X-Frame-Options": "Review framing protection with DENY, SAMEORIGIN, or CSP frame-ancestors.",
+            "Referrer-Policy": "Choose a policy that limits referrer information sent to other origins.",
+            "Permissions-Policy": "Restrict browser features that this application does not need.",
+            "X-Content-Type-Options": "Set nosniff to prevent MIME type guessing.",
+            "Cross-Origin-Opener-Policy": "Review cross-origin window isolation for this application's integrations.",
+            "Cross-Origin-Resource-Policy": "Review which origins should be allowed to load these resources.",
+        }
         for header, default_status in checks:
             value = headers.get(header)
             if value:
                 status = "Present"
                 if header == "Content-Security-Policy" and "unsafe-inline" in value:
                     status = "Weak"
+                if header == "X-Content-Type-Options" and value.strip().lower() != "nosniff":
+                    status = "Misconfigured"
+                if header == "X-Frame-Options" and value.strip().upper() not in ("DENY", "SAMEORIGIN"):
+                    status = "Misconfigured"
+                if header == "Strict-Transport-Security":
+                    max_age = re.search(r"(?:^|;)\s*max-age\s*=\s*([0-9]+)\s*(?:;|$)", value, re.IGNORECASE)
+                    if not max_age or not max_age.group(1).strip("0"):
+                        status = "Weak"
                 details = value[:100] + "..." if len(value) > 100 else value
+                if status != "Present":
+                    details += " — " + guidance[header]
             else:
                 status = default_status
-                details = "Header is not set."
+                details = "Header is not set. " + guidance[header]
                 
             self.security_headers.append(SecurityHeaderStatus(
                 header_name=header,
