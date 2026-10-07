@@ -273,10 +273,8 @@ def evaluate_correlation_eligibility(tech) -> CorrelationEligibility:
     # 3c. Canonical Package Resolver fallback
     pkg_identity = resolve_technology_package(tech_name, getattr(tech, "version", None), tech)
     if pkg_identity:
-        if not package_name:
-            package_name = pkg_identity.name
-        if not ecosystem:
-            ecosystem = pkg_identity.ecosystem
+        package_name = pkg_identity.name
+        ecosystem = pkg_identity.ecosystem
 
     has_package_identity = bool(ecosystem and package_name)
     has_cpe_identity = bool(cpe_vendor and cpe_product)

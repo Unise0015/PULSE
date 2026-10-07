@@ -37,6 +37,7 @@ class NVDCorrelationEngine:
         self.provider = NVDCPEProvider()
         self.matcher = NVDVersionMatcher()
         self.cache = NVDCorrelationCache(ttl_hours=cache_ttl_hours)
+        self.warnings: List[str] = []
 
     def correlate(
         self,
@@ -53,6 +54,7 @@ class NVDCorrelationEngine:
         Returns (findings, statistics).
         """
         tracker = NVDStatisticsTracker()
+        self.warnings = []
         findings: List[CorrelatedVulnerability] = []
 
         for result in results:
@@ -84,6 +86,7 @@ class NVDCorrelationEngine:
             cves = self._retrieve_cves(candidate, tracker)
             if cves is None:
                 # Provider failure — skip this candidate
+                self.warnings.append(f"NVD correlation unavailable for {result.technology}")
                 continue
             if not cves:
                 # No CVEs for this CPE — try next candidate

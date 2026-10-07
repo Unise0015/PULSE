@@ -1,3 +1,10 @@
+{% if report.warnings %}
+Assessment incomplete — results may be partial.
+{% for warning in report.warnings %}
+- {{ warning }}
+{% endfor %}
+{% endif %}
+
 PULSE Security Scan Report
 ==========================
 
@@ -28,7 +35,7 @@ VULNERABILITY DETAILS
   Fix Version: {{ f.fix_version or 'N/A' }}
 {% endfor %}
 {% else %}
-No vulnerabilities detected.
+{% if report.executive_summary.assessment_complete %}No known vulnerabilities detected in completed checks.{% else %}No findings returned; incomplete checks cannot establish a clean result.{% endif %}
 {% endif %}
 
 {% for section in report.sections %}

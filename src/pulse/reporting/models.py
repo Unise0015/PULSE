@@ -28,6 +28,7 @@ class ExecutiveSummaryModel:
     packages_scanned: int
     vulnerable_count: int
     attack_surface_score: int
+    assessment_complete: bool = True
 
 @dataclass
 class RiskSummaryModel:
@@ -120,3 +121,4 @@ class ReportModel:
     findings: List[ReportFindingModel]
     sections: List[BaseSection] = field(default_factory=list)
     metadata: ReportMetadata = field(default_factory=lambda: ReportMetadata(pulse_version="4.0.0"))
+    warnings: List[str] = field(default_factory=list)

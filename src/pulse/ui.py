@@ -190,10 +190,18 @@ def print_provider_observability(console, scan: ScanResult):
 
 
 def print_security_summary(console, scan: ScanResult, compact: bool = False):
+    if scan.assessment_warnings:
+        warning_text = Text("Assessment incomplete — results may be partial.\n", style="bold yellow")
+        for warning in scan.assessment_warnings:
+            warning_text.append(f"• {warning}\n", style="yellow")
+        console.print(Panel(warning_text, title="Scan coverage", expand=False))
     if not scan.findings and scan.vulnerable_packages_count == 0:
         summary_text = Text()
         summary_text.append(f"{'Dependencies Scanned:':<28} {scan.packages_scanned}\n", style="bold")
-        summary_text.append(f"[bold green]No vulnerabilities detected[/bold green]")
+        if scan.assessment_warnings:
+            summary_text.append("No findings returned; incomplete checks cannot establish a clean result.", style="yellow")
+        else:
+            summary_text.append("No known vulnerabilities detected in completed checks.", style="green")
         console.print(Panel(
             summary_text,
             box=box.SQUARE,

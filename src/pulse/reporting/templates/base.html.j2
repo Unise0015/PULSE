@@ -310,6 +310,12 @@
 </head>
 <body>
   <div class="container">
+    {% if report.warnings %}
+    <section class="section" role="alert">
+      <h2>Assessment incomplete — results may be partial</h2>
+      <ul>{% for warning in report.warnings %}<li>{{ warning }}</li>{% endfor %}</ul>
+    </section>
+    {% endif %}
     {% include 'components/posture_header.html.j2' %}
     {% include 'components/executive_summary.html.j2' %}
     {% include 'components/risk_cards.html.j2' %}

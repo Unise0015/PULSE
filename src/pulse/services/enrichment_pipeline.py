@@ -78,7 +78,11 @@ class OSVEnricher(BaseEnricher):
             osv_task = None
             
         osv_provider = OSVProvider()
-        findings = osv_provider.lookup_packages(data.packages, progress=progress, task_id=osv_task)
+        try:
+            findings = osv_provider.lookup_packages(data.packages, progress=progress, task_id=osv_task)
+        finally:
+            data.warnings.extend(osv_provider.warnings)
+            osv_provider.client.close()
         
         if progress and osv_task is not None:
             progress.remove_task(osv_task)
@@ -90,8 +94,11 @@ class OSVEnricher(BaseEnricher):
         data.metrics.osv_matches = len(findings)
 
         # Check for packages with 0 OSV findings that have known CPE entries in catalog or technology definitions
-        packages_with_findings = {f.package.name.lower() for f in data.findings if f.package and f.package.name}
-        unmatched_packages = [p for p in data.packages if p.name and p.name.lower() not in packages_with_findings]
+        def package_key(package):
+            return (package.ecosystem, package.name.lower(), package.version)
+
+        packages_with_findings = {package_key(f.package) for f in data.findings if f.package and f.package.name}
+        unmatched_packages = [p for p in data.packages if p.name and package_key(p) not in packages_with_findings]
         
         if unmatched_packages:
             try:
@@ -136,16 +143,20 @@ class OSVEnricher(BaseEnricher):
                             resolution_confidence=resolution.confidence
                         )
                         cpe_results.append(cpe_res)
-                        pkg_map[norm] = pkg
+                        pkg_map[(norm, pkg.version)] = pkg
                         
                 if progress and cpe_task is not None:
                     progress.remove_task(cpe_task)
                         
                 if cpe_results:
                     engine = NVDCorrelationEngine()
-                    cpe_vulns, _ = engine.correlate(cpe_results)
+                    try:
+                        cpe_vulns, _ = engine.correlate(cpe_results)
+                    finally:
+                        data.warnings.extend(engine.warnings)
+                        engine.provider.close()
                     for cv in cpe_vulns:
-                        orig_pkg = pkg_map.get(cv.technology_name.lower()) or PackageInfo(name=cv.technology_name, version=cv.version or "Unknown", ecosystem="NVD")
+                        orig_pkg = pkg_map.get((cv.technology_name.lower(), cv.matched_version)) or PackageInfo(name=cv.technology_name, version=cv.matched_version or "Unknown", ecosystem="NVD")
                         data.findings.append(VulnerabilityFinding(
                             package=orig_pkg,
                             cve_id=cv.cve_id,
@@ -161,10 +172,8 @@ class OSVEnricher(BaseEnricher):
                             source_asset=orig_pkg.name
                         ))
             except Exception as e:
-                logger.debug("NVD CPE correlation in OSVEnricher failed: %s", e)
-        
-        if progress:
-            progress.update(task, completed=1, description=f"[green]Vulnerability Matching[/green] found {len(data.findings)} vulnerabilities")
+                data.warnings.append(f"NVD CPE correlation failed: {e}")
+                logger.warning("NVD CPE correlation in OSVEnricher failed: %s", e)
 
 class NVDEnricher(BaseEnricher):
     """Enriches vulnerabilities with NVD metadata."""
@@ -179,11 +188,15 @@ class NVDEnricher(BaseEnricher):
         if progress:
             task = progress.add_task("[yellow]Enriching with NVD...[/yellow]", total=None)
             
-        nvd_provider = NVDProvider()
         # Filter to findings that came from OSV to enrich them
         osv_findings = [f for f in data.findings if f.source == "OSV"]
         if osv_findings:
-            nvd_provider.enrich_findings(osv_findings)
+            nvd_provider = NVDProvider()
+            try:
+                nvd_provider.enrich_findings(osv_findings)
+            finally:
+                data.warnings.extend(nvd_provider.warnings)
+                nvd_provider.client.close()
             for f in osv_findings:
                 if f.description and (not f.summary or len(f.description) > len(f.summary or "")):
                     raw = f.description
@@ -209,7 +222,11 @@ class EPSSEnricher(BaseEnricher):
             task = progress.add_task("[yellow]Fetching EPSS scores...[/yellow]", total=None)
             
         epss_provider = EPSSProvider()
-        epss_provider.enrich_findings(data.findings)
+        try:
+            epss_provider.enrich_findings(data.findings)
+        finally:
+            data.warnings.extend(epss_provider.warnings)
+            epss_provider.client.close()
         
         if progress:
             progress.update(task, completed=1, description="[green]EPSS Enrichment[/green] completed")
@@ -239,7 +256,11 @@ class KEVEnricher(BaseEnricher):
             task = progress.add_task("[yellow]Matching KEV entries...[/yellow]", total=None)
             
         kev_provider = KEVProvider()
-        kev_provider.enrich_findings(data.findings)
+        try:
+            kev_provider.enrich_findings(data.findings)
+        finally:
+            data.warnings.extend(kev_provider.warnings)
+            kev_provider.client.close()
         data.metrics.kev_matches = sum(1 for f in data.findings if f.kev_match)
         
         if progress:
@@ -348,7 +369,7 @@ class EnrichmentPipeline:
     """Consolidated, stage-driven, and fault-tolerant dependency enrichment pipeline."""
     
     def __init__(self, stages: Optional[List[Type[BaseEnricher]]] = None):
-        self.stages = stages or DEFAULT_STAGES
+        self.stages = DEFAULT_STAGES if stages is None else stages
 
     def run(self, 
             packages: List[PackageInfo], 

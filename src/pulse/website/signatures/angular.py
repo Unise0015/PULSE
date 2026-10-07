@@ -53,6 +53,34 @@ class AngularSignature(TechnologySignature):
                 reliability=EvidenceReliability.VERIFIED
             ))
 
+        return evidence
+
+    def extract_version(self, headers: dict, html: str, cookies: dict, scripts: List[str]) -> Optional[str]:
+        # Try meta/attribute extraction
+        match = re.search(r'ng-version=["\']([^"\']+)["\']', html)
+        if match:
+            return match.group(1)
+
+        return None
+
+    def get_cpe_candidates(self, version: Optional[str]) -> List[CPECandidate]:
+        ver = version if version else "*"
+        return [
+            CPECandidate(cpe=f"cpe:2.3:a:google:angular:{ver}:*:*:*:*:*:*:*", confidence=95)
+        ]
+
+
+class AngularJSSignature(AngularSignature):
+    @property
+    def signature_id(self) -> str:
+        return "angularjs"
+
+    @property
+    def name(self) -> str:
+        return "AngularJS"
+
+    def match(self, headers: dict, html: str, cookies: dict, scripts: List[str]) -> List[DetectionEvidence]:
+        evidence = []
         if "ng-app" in html or "ng-controller" in html or "ng-binding" in html:
             evidence.append(DetectionEvidence(
                 method=DetectionMethod.HTML,
@@ -80,11 +108,6 @@ class AngularSignature(TechnologySignature):
         return evidence
 
     def extract_version(self, headers: dict, html: str, cookies: dict, scripts: List[str]) -> Optional[str]:
-        # Try meta/attribute extraction
-        match = re.search(r'ng-version=["\']([^"\']+)["\']', html)
-        if match:
-            return match.group(1)
-
         # Try script extraction
         angular_pattern = r'angular(?:-([\d\.]+))?(?:\.min)?\.js'
         for script in scripts:
@@ -94,7 +117,4 @@ class AngularSignature(TechnologySignature):
         return None
 
     def get_cpe_candidates(self, version: Optional[str]) -> List[CPECandidate]:
-        ver = version if version else "*"
-        return [
-            CPECandidate(cpe=f"cpe:2.3:a:angular:angular:{ver}:*:*:*:*:*:*:*", confidence=95)
-        ]
+        return [CPECandidate(cpe=f"cpe:2.3:a:angularjs:angular.js:{version or '*'}:*:*:*:*:*:*:*", confidence=95)]

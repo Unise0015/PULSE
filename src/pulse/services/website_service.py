@@ -126,9 +126,10 @@ class WebsiteService:
         console.print()
 
         # 5. Correlate packages via shared EnrichmentPipeline ONCE
-        all_findings, attack_paths, cpe_findings = self._correlate_packages(
+        all_findings, attack_paths, cpe_findings, warnings = self._correlate_packages(
             unique_packages, normalized, eligibilities, console
         )
+        scan.warnings = list(dict.fromkeys(scan.warnings + warnings))
 
         # 6. Map findings back to each technology
         tech_findings_map = self._map_findings_to_technologies(
@@ -137,7 +138,7 @@ class WebsiteService:
 
         # 7. Build structured TechnologyCorrelationResult for every detected technology
         correlation_results, correlated_count, failed_count = self._build_correlation_results(
-            normalized, eligibilities, tech_findings_map
+            normalized, eligibilities, tech_findings_map, incomplete=bool(warnings)
         )
         scan.website_assessment.technology_correlation_results = correlation_results
         scan.website_assessment.correlated_technologies = correlated_count
@@ -166,7 +167,8 @@ class WebsiteService:
         populate_scan_recommendations(scan)
 
         scan.website_assessment.correlation_status = (
-            CorrelationStatus.COMPLETED if (failed_count == 0 or correlated_count > 0) else CorrelationStatus.FAILED
+            CorrelationStatus.PARTIAL if warnings or (failed_count and correlated_count)
+            else CorrelationStatus.FAILED if failed_count else CorrelationStatus.COMPLETED
         )
         scan.website_assessment.correlation_completed_at = datetime.now()
 
@@ -258,7 +260,7 @@ class WebsiteService:
         technologies: List[TechnologyFingerprint],
         eligibilities: Dict[str, CorrelationEligibility],
         console: Any
-    ) -> Tuple[List[VulnerabilityFinding], List[Any], List[VulnerabilityFinding]]:
+    ) -> Tuple[List[VulnerabilityFinding], List[Any], List[VulnerabilityFinding], List[str]]:
         """
         Executes shared EnrichmentPipeline ONCE for all unique packages and
         correlates CPE-only technologies where applicable.
@@ -266,6 +268,7 @@ class WebsiteService:
         all_findings: List[VulnerabilityFinding] = []
         attack_paths: List[Any] = []
         cpe_findings: List[VulnerabilityFinding] = []
+        warnings: List[str] = []
 
         with Progress(
             SpinnerColumn(spinner_name="line"),
@@ -282,6 +285,7 @@ class WebsiteService:
                 enrich_result = pipeline.run(unique_packages, progress=progress)
                 all_findings = enrich_result.findings
                 attack_paths = enrich_result.attack_paths
+                warnings.extend(enrich_result.warnings)
                 progress.update(
                     task_scan,
                     completed=1,
@@ -325,9 +329,13 @@ class WebsiteService:
                             resolution_confidence=tech.confidence
                         ))
 
-                    correlated_cpe_vulns, _ = engine.correlate(cpe_results)
+                    try:
+                        correlated_cpe_vulns, _ = engine.correlate(cpe_results)
+                    finally:
+                        warnings.extend(engine.warnings)
+                        engine.provider.close()
                     for cv in correlated_cpe_vulns:
-                        dummy_pkg = PackageInfo(name=cv.technology_name, version=cv.version or "Unknown", ecosystem="CPE")
+                        dummy_pkg = PackageInfo(name=cv.technology_name, version=cv.matched_version or "Unknown", ecosystem="CPE")
                         cpe_findings.append(VulnerabilityFinding(
                             package=dummy_pkg,
                             cve_id=cv.cve_id,
@@ -343,8 +351,9 @@ class WebsiteService:
                         ))
                     progress.update(task_cpe, completed=1, description=f"[green]CPE Correlation[/green] found {len(cpe_findings)} vulnerabilities")
                 except Exception as e:
+                    warnings.append(f"Website CPE correlation failed: {e}")
                     logger.debug("CPE correlation failed: %s", e)
-                    progress.update(task_cpe, completed=1, description="[yellow]CPE Correlation completed[/yellow]")
+                    progress.update(task_cpe, completed=1, description="[yellow]CPE Correlation incomplete[/yellow]")
 
         # Tag all findings with FindingSourceType.WEBSITE and evidence adjustments
         for finding in all_findings:
@@ -365,7 +374,7 @@ class WebsiteService:
                 finding.source_evidence = [f"{ev.method.value if hasattr(ev.method, 'value') else ev.method}: {ev.source}" for ev in matched_tech.evidence]
                 finding.risk_heat_score = calculate_adjusted_risk(finding.risk_heat_score, mult)
 
-        return all_findings, attack_paths, cpe_findings
+        return all_findings, attack_paths, cpe_findings, warnings
 
     def _map_findings_to_technologies(
         self,
@@ -402,7 +411,8 @@ class WebsiteService:
         self,
         technologies: List[TechnologyFingerprint],
         eligibilities: Dict[str, CorrelationEligibility],
-        tech_findings_map: Dict[str, List[VulnerabilityFinding]]
+        tech_findings_map: Dict[str, List[VulnerabilityFinding]],
+        incomplete: bool = False,
     ) -> Tuple[Dict[str, TechnologyCorrelationResult], int, int]:
         """
         Builds explicit structured TechnologyCorrelationResult objects ensuring
@@ -421,6 +431,10 @@ class WebsiteService:
                 status = "VULNERABILITIES_FOUND"
                 reason = f"{len(findings)} vulnerabilities detected"
                 correlated_count += 1
+            elif incomplete and elig and elig.is_eligible:
+                status = "CORRELATION_UNAVAILABLE"
+                reason = "Vulnerability checks were incomplete; absence of findings is inconclusive"
+                failed_count += 1
             elif elig and elig.is_eligible and elig.version_available:
                 status = "NO_KNOWN_VULNERABILITIES"
                 reason = "No known vulnerabilities found in verified package identity"

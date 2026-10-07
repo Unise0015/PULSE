@@ -67,11 +67,21 @@ TECHNOLOGY_CATALOG = {
     },
     "angular": {
         "display_name": "Angular",
-        "aliases": ["angular", "angularjs", "angular.js"],
+        "aliases": ["angular", "@angular/core"],
         "lookup_strategy": "both",
         "ecosystem": "npm",
         "package": "@angular/core",
         "cpe": "cpe:2.3:a:google:angular",
+        "supports_versions": True,
+        "coverage": "partial"
+    },
+    "angularjs": {
+        "display_name": "AngularJS",
+        "aliases": ["angularjs", "angular.js"],
+        "lookup_strategy": "both",
+        "ecosystem": "npm",
+        "package": "angular",
+        "cpe": "cpe:2.3:a:angularjs:angular.js",
         "supports_versions": True,
         "coverage": "partial"
     },

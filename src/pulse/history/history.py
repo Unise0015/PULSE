@@ -1,4 +1,5 @@
 import sqlite3
+import json
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Tuple
@@ -26,7 +27,6 @@ class HistoryService:
         return scan_run_id
 
     def _serialize_recommendations(self, scan: ScanResult) -> Optional[str]:
-        import json
         if not hasattr(scan, "_recommendations") or not scan._recommendations:
             return None
         try:
@@ -46,12 +46,24 @@ class HistoryService:
             return None
 
     def _save_scan_metadata(self, cursor, scan: ScanResult, report_dir: Optional[str], recs_json: Optional[str]) -> int:
+        website_state = None
+        if scan.website_assessment:
+            assessment = scan.website_assessment
+            website_state = json.dumps({
+                "correlation_status": assessment.correlation_status.value,
+                "correlated_technologies": assessment.correlated_technologies,
+                "failed_technologies": assessment.failed_technologies,
+                "status": assessment.status,
+                "status_code": assessment.status_code,
+                "correlation_completed_at": assessment.correlation_completed_at.isoformat() if assessment.correlation_completed_at else None,
+            })
         cursor.execute('''
             INSERT INTO scan_runs (
                 timestamp, hostname, tool_version, attack_surface_score,
                 scan_duration_seconds, packages_scanned, vulnerabilities_found, kev_matches,
-                target_type, target_id, target_fingerprint, report_dir, recommendations_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                target_type, target_id, target_fingerprint, report_dir, recommendations_json,
+                warnings_json, scan_integrity, website_state_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             scan.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
             scan.hostname,
@@ -65,7 +77,10 @@ class HistoryService:
             scan.target_id,
             scan.target_fingerprint,
             report_dir,
-            recs_json
+            recs_json,
+            json.dumps(scan.assessment_warnings),
+            "LOW" if scan.assessment_warnings else "HIGH",
+            website_state
         ))
         return cursor.lastrowid
 
@@ -118,7 +133,6 @@ class HistoryService:
             return
             
         import hashlib
-        import json
         for tech in scan.website_assessment.technologies:
             # Generate keys using normalized catalog name
             norm_key = tech.name.lower()
@@ -210,12 +224,14 @@ class HistoryService:
 
     def get_posture_delta(self, current_scan: ScanResult) -> Optional[PostureDelta]:
         """Calculates the delta between the last scan in DB and the current_scan."""
+        if current_scan.assessment_warnings:
+            return None
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             
             # Get the most recent scan (which would be the previous one since we haven't saved current yet)
             sql = '''
-                SELECT id, attack_surface_score, kev_matches, packages_scanned
+                SELECT id, attack_surface_score, kev_matches, packages_scanned, warnings_json
                 FROM scan_runs
                 WHERE target_type = ? AND target_id = ?
             '''
@@ -232,6 +248,8 @@ class HistoryService:
             
             if not row:
                 return None # First scan
+            if row[4] != "[]":
+                return None  # Incomplete or legacy coverage cannot establish remediation.
                 
             prev_scan_id = row[0]
             prev_score = row[1] if row[1] is not None else 0
@@ -306,7 +324,7 @@ class HistoryService:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                SELECT id, timestamp, attack_surface_score, packages_scanned, vulnerabilities_found, target_type, target_id, report_dir
+                SELECT id, timestamp, attack_surface_score, packages_scanned, vulnerabilities_found, target_type, target_id, report_dir, scan_integrity
                 FROM scan_runs
                 ORDER BY timestamp DESC
             ''')
@@ -320,7 +338,8 @@ class HistoryService:
                     "vulns": row[4],
                     "target_type": row[5] if len(row) > 5 and row[5] is not None else "global",
                     "target_id": row[6] if len(row) > 6 and row[6] is not None else "global",
-                    "report_dir": row[7] if len(row) > 7 and row[7] is not None else None
+                    "report_dir": row[7] if len(row) > 7 and row[7] is not None else None,
+                    "scan_integrity": row[8] or "UNKNOWN"
                 })
             return runs
 
@@ -332,7 +351,7 @@ class HistoryService:
             cursor.execute('''
                 SELECT timestamp, hostname, tool_version, attack_surface_score, 
                        scan_duration_seconds, packages_scanned, kev_matches, vulnerabilities_found,
-                       target_type, target_id, target_fingerprint, recommendations_json
+                       target_type, target_id, target_fingerprint, recommendations_json, warnings_json, website_state_json
                 FROM scan_runs
                 WHERE id = ?
             ''', (scan_id,))
@@ -354,10 +373,16 @@ class HistoryService:
                 target_fingerprint=row[10] if len(row) > 10 and row[10] is not None else ""
             )
             scan.id = scan_id
+            try:
+                stored_warnings = json.loads(row[12]) if row[12] is not None else None
+                if not isinstance(stored_warnings, list) or any(not isinstance(w, str) for w in stored_warnings):
+                    raise ValueError("Missing or invalid coverage record")
+                scan.warnings = stored_warnings
+            except (ValueError, TypeError):
+                scan.warnings = ["Scan coverage was not recorded or could not be read"]
 
             if len(row) > 11 and row[11]:
                 try:
-                    import json
                     scan._recommendations = json.loads(row[11])
                 except Exception:
                     pass
@@ -432,7 +457,6 @@ class HistoryService:
                 ''', (scan_id,))
                 
                 from pulse.domain.models import TechnologyFingerprint, TechnologyCategory, WebsiteAssessment
-                import json
                 
                 technologies = []
                 for tech_row in cursor.fetchall():
@@ -483,6 +507,25 @@ class HistoryService:
                     technologies=technologies,
                     security_headers=[]
                 )
+                try:
+                    from pulse.domain.models import CorrelationStatus
+                    state = json.loads(row[13])
+                    status = CorrelationStatus(state["correlation_status"])
+                    correlated = state["correlated_technologies"]
+                    failed = state["failed_technologies"]
+                    if any(type(count) is not int or count < 0 for count in (correlated, failed)):
+                        raise ValueError("Invalid website correlation counts")
+                    completed_at = state.get("correlation_completed_at")
+                    completed_at = datetime.fromisoformat(completed_at) if completed_at else None
+                    assessment = scan.website_assessment
+                    assessment.correlation_status = status
+                    assessment.correlated_technologies = correlated
+                    assessment.failed_technologies = failed
+                    assessment.correlation_completed_at = completed_at
+                    assessment.status = state.get("status", "OK")
+                    assessment.status_code = state.get("status_code", 200)
+                except (ValueError, TypeError, KeyError, AttributeError):
+                    scan.warnings.append("Website correlation state was not recorded or could not be read")
             
             # Validate scan reconstruction
             expected_vulns = row[7] if len(row) > 7 else len(scan.findings)
@@ -501,7 +544,6 @@ class HistoryService:
         """Fetch the list of technologies detected in the most recent scan run."""
         from pulse.domain.models import TechnologyCategory, DetectionStatus, ConfidenceBand
         from datetime import datetime
-        import json
         
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
@@ -799,6 +841,4 @@ class HistoryService:
                 "file_size": row[5],
                 "status": row[6]
             }
-
-
 

@@ -75,8 +75,10 @@ class DeclarativeTechnologyEngine:
                 canon_name = "Vue.js"
             elif tech_name in ("React", "reactjs"):
                 canon_name = "React"
-            elif tech_name in ("Angular", "angularjs"):
+            elif tech_name == "Angular":
                 canon_name = "Angular"
+            elif tech_name.lower() in ("angularjs", "angular.js"):
+                canon_name = "AngularJS"
 
             tech_rule = self.loader.technology_rules.get(canon_name) or self.loader.technology_rules.get(tech_name)
             categories = tech_rule.categories if tech_rule else ["Web Technology"]

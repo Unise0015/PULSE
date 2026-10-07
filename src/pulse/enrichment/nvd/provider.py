@@ -41,6 +41,9 @@ class NVDCPEProvider:
         Returns:
             List of raw CVE dicts from NVD, or None on failure.
         """
+        from pulse.state import AppState
+        if AppState.OFFLINE_MODE:
+            return None
         for attempt in range(_MAX_RETRIES + 1):
             try:
                 resp = self.client.get(
@@ -50,7 +53,9 @@ class NVDCPEProvider:
                 resp.raise_for_status()
 
                 data = resp.json()
-                vulnerabilities = data.get("vulnerabilities", [])
+                vulnerabilities = data.get("vulnerabilities")
+                if not isinstance(vulnerabilities, list):
+                    raise ValueError("NVD response is missing vulnerabilities")
 
                 # Extract the 'cve' dict from each vulnerability wrapper
                 cves = [
@@ -75,8 +80,7 @@ class NVDCPEProvider:
                 if e.response.status_code == 403:
                     logger.warning("NVD API key missing or invalid. CPE correlation limited.")
                 elif e.response.status_code == 404:
-                    logger.debug("No NVD results for CPE: %s", cpe_name)
-                    return []
+                    logger.warning("NVD endpoint unavailable for CPE: %s", cpe_name)
                 else:
                     logger.warning("NVD HTTP %s for CPE %s.", e.response.status_code, cpe_name)
                 break

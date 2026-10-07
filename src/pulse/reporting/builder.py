@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from typing import List, Optional
+from urllib.parse import urlparse
 from pulse import __version__
 from pulse.domain.models import ScanResult, VulnerabilityFinding, PackageInfo
 from pulse.reporting.context import ReportContext
@@ -12,6 +13,18 @@ from pulse.reporting.models import (
 
 class ReportBuilder:
     """Pure converter that transforms a ReportContext (wrapping a ScanResult) into a canonical ReportModel."""
+
+    @staticmethod
+    def _safe_reference_url(value: Optional[str]) -> Optional[str]:
+        if not value:
+            return None
+        try:
+            parsed = urlparse(value)
+            if parsed.scheme.lower() in ("http", "https") and parsed.hostname:
+                return value
+        except ValueError:
+            pass
+        return None
 
     @staticmethod
     def build(context: ReportContext) -> ReportModel:
@@ -32,7 +45,8 @@ class ReportBuilder:
             duration=duration,
             packages_scanned=scan.packages_scanned,
             vulnerable_count=scan.vulnerable_packages_count,
-            attack_surface_score=scan.attack_surface_score
+            attack_surface_score=scan.attack_surface_score,
+            assessment_complete=not scan.assessment_warnings
         )
 
         # 3. Severity & Risk Summary
@@ -81,7 +95,7 @@ class ReportBuilder:
                     fix_version=rec_fix_ver or f.fix_version,
                     remediation_command=rem_cmd,
                     attack_techniques=techniques,
-                    nvd_url=f.nvd_url
+                    nvd_url=ReportBuilder._safe_reference_url(f.nvd_url)
                 )
             )
 
@@ -211,10 +225,10 @@ class ReportBuilder:
             template_version="1.0",
             generated_at=context.generated_at,
             database_versions={
-                "osv": "Active",
-                "nvd": "Active",
-                "epss": "Active",
-                "kev": "Active"
+                "osv": "Not recorded",
+                "nvd": "Not recorded",
+                "epss": "Not recorded",
+                "kev": "Not recorded"
             }
         )
 
@@ -223,7 +237,8 @@ class ReportBuilder:
             risk_summary=risk_summary,
             findings=finding_models,
             sections=sections,
-            metadata=metadata
+            metadata=metadata,
+            warnings=scan.assessment_warnings
         )
 
     @staticmethod

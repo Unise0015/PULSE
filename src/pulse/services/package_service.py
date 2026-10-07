@@ -59,6 +59,7 @@ class PackageService:
             attack_surface_score=attack_surface_score,
             scan_duration_seconds=duration,
             findings=findings,
+            warnings=list(enrich_result.warnings),
             detected_ecosystems=detected,
             target_type=target_type,
             target_id=target_id,

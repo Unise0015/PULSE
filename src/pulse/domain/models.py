@@ -379,6 +379,9 @@ class WebsiteAssessment:
     failed_technologies: int = 0
     technology_eligibilities: Dict[str, Any] = field(default_factory=dict)
     technology_correlation_results: Dict[str, TechnologyCorrelationResult] = field(default_factory=dict)
+    status: str = "OK"
+    status_code: int = 200
+    warnings: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -402,6 +405,30 @@ class ScanResult:
     detected_ecosystems: List[str] = field(default_factory=list)
     plugin_diagnostics: Dict[str, PluginDiagnostics] = field(default_factory=dict)
     upgrade_recommendations: Dict[str, Any] = field(default_factory=dict)
+    warnings: List[str] = field(default_factory=list)
+
+    @property
+    def assessment_warnings(self) -> List[str]:
+        """Completion evidence shared by terminal, history, and every export."""
+        warnings = list(self.warnings)
+        for plugin, diagnostics in self.plugin_diagnostics.items():
+            warnings.extend(f"{plugin}: {message}" for message in diagnostics.errors + diagnostics.warnings)
+            if diagnostics.status == PluginExecutionStatus.FAILED and not diagnostics.errors:
+                warnings.append(f"{plugin}: discovery failed")
+        if self.unsupported_packages:
+            warnings.append(f"{len(self.unsupported_packages)} packages were unsupported and skipped")
+        if self.website_assessment:
+            warnings.extend(self.website_assessment.warnings)
+            if self.website_assessment.correlation_status != CorrelationStatus.COMPLETED:
+                warnings.append(f"Website vulnerability correlation: {self.website_assessment.correlation_status.value}")
+            if not self.website_assessment.correlated_technologies:
+                warnings.append("No website technologies completed vulnerability correlation")
+            for result in self.website_assessment.technology_correlation_results.values():
+                if result.correlation_status not in ("VULNERABILITIES_FOUND", "NO_KNOWN_VULNERABILITIES"):
+                    warnings.append(f"{result.technology_name}: {result.correlation_reason or result.correlation_status}")
+        elif not self.packages_scanned:
+            warnings.append("No packages were available for vulnerability checks")
+        return list(dict.fromkeys(warnings))
 
     @staticmethod
     def make_package_key(ecosystem: str, package_name: str) -> str:
@@ -569,4 +596,3 @@ def deduplicate_and_merge_findings(findings: List[Any]) -> List[Any]:
                         existing_tech_ids.add(tech.id)
 
     return list(merged_map.values()) + non_findings
-
